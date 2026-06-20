@@ -79,11 +79,23 @@ export interface EvaluationReport {
 export interface ValidatorAssessment {
   label: string;
   summary: string;
+  signalBreakdown?: {
+    questionQuality: SignalDimension;
+    adaptiveFollowUp: SignalDimension;
+    ownershipPosture: SignalDimension;
+    groundedNextStep: SignalDimension;
+  };
   strengths: string[];
   concerns: string[];
   evidence: string[];
   finalRecommendationAssessment: string;
   nextInterviewFocus: string[];
+}
+
+export interface SignalDimension {
+  label: string;
+  assessment: string;
+  evidence: string;
 }
 
 export interface ValidatorReport {

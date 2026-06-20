@@ -572,6 +572,34 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
             <p className="mb-3 rounded-md border border-slate-800 bg-background p-3 text-sm leading-relaxed text-slate-200">
               {report.assessment.summary}
             </p>
+            {report.assessment.signalBreakdown && (
+              <div className="mb-4 grid gap-3 md:grid-cols-2">
+                {[
+                  ["Question Quality", report.assessment.signalBreakdown.questionQuality],
+                  ["Adaptive Follow-up", report.assessment.signalBreakdown.adaptiveFollowUp],
+                  ["Ownership Posture", report.assessment.signalBreakdown.ownershipPosture],
+                  ["Grounded Next Step", report.assessment.signalBreakdown.groundedNextStep],
+                ].map(([title, signal]) => (
+                  <div
+                    key={title as string}
+                    className="rounded-md border border-slate-800 bg-background p-3"
+                  >
+                    <h4 className="mb-1 text-xs font-black uppercase tracking-wide text-slate-500">
+                      {title as string}
+                    </h4>
+                    <p className="mb-1 text-sm font-semibold text-emerald-300">
+                      {(signal as { label: string }).label}
+                    </p>
+                    <p className="mb-2 text-sm leading-relaxed text-slate-300">
+                      {(signal as { assessment: string }).assessment}
+                    </p>
+                    <p className="text-xs leading-relaxed text-slate-500">
+                      {(signal as { evidence: string }).evidence}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="mb-4 grid gap-3 md:grid-cols-2">
               <div>
                 <h4 className="mb-1 text-xs font-black uppercase tracking-wide text-slate-500">

@@ -87,7 +87,7 @@ The current app uses a deterministic mock answerer:
 
 When `Model endpoint` is selected, the same deterministic gatekeeper still decides what facts were earned. The model only writes the manager response using approved facts, so scoring stays stable while the answer sounds more natural.
 
-The final report uses `/api/question-arena/evaluate`. It keeps weighted information gain deterministic, then asks the model-backed validator to explain the candidate signal with strengths, concerns, evidence, and next interview focus.
+The final report uses `/api/question-arena/evaluate`. It keeps weighted information gain deterministic, then asks the model-backed validator to explain the candidate signal with question quality, adaptive follow-up, ownership posture, grounded next step, strengths, concerns, evidence, and next interview focus.
 
 ## Team Workflow
 

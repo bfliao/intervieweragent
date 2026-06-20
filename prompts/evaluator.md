@@ -29,6 +29,28 @@ Return valid JSON only with this exact shape:
 {
   "label": "Strong ambiguity reducer | Developing ambiguity reducer | Weak ambiguity reducer",
   "summary": "1-2 sentence hiring-style assessment.",
+  "signalBreakdown": {
+    "questionQuality": {
+      "label": "short signal label",
+      "assessment": "1 sentence on whether the questions reveal useful hypotheses, experience, stakeholder awareness, or risk awareness.",
+      "evidence": "specific quote or paraphrase from the candidate's questions"
+    },
+    "adaptiveFollowUp": {
+      "label": "short signal label",
+      "assessment": "1 sentence on whether the candidate used answers as input for sharper follow-up questions.",
+      "evidence": "specific quote or paraphrase from the transcript"
+    },
+    "ownershipPosture": {
+      "label": "Approval-seeking | Narrow executor | Collaborator | Problem owner",
+      "assessment": "1 sentence on the candidate's operating posture.",
+      "evidence": "specific quote or paraphrase from the transcript"
+    },
+    "groundedNextStep": {
+      "label": "Grounded | Partially grounded | Ungrounded | Missing",
+      "assessment": "1 sentence on whether the next immediate step follows from earned context.",
+      "evidence": "specific quote or paraphrase from the next immediate step"
+    }
+  },
   "strengths": ["specific strength", "specific strength"],
   "concerns": ["specific concern or missed signal"],
   "evidence": ["quote or paraphrase from transcript tied to signal"],

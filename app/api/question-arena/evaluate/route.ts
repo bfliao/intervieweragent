@@ -6,6 +6,7 @@ import type {
   HiddenFact,
   Message,
   ScenarioConfig,
+  SignalDimension,
   ValidatorAssessment,
   ValidatorReport,
 } from "@/lib/questionArena/types";
@@ -33,6 +34,8 @@ function fallbackAssessment(
   const askedQuestions = messages
     .filter((message) => message.role === "candidate")
     .map((message) => message.content);
+  const firstQuestion = askedQuestions[0] || "No question recorded.";
+  const laterQuestion = askedQuestions[1] || firstQuestion;
 
   return {
     label: deterministic.label,
@@ -42,6 +45,43 @@ function fallbackAssessment(
         : deterministic.percent >= 45
           ? "The candidate found some useful context but missed important constraints that would affect the next step."
           : "The candidate did not earn enough context to choose a grounded next step.",
+    signalBreakdown: {
+      questionQuality: {
+        label:
+          unlockedFacts.length > 0 ? "Context-seeking" : "Low signal",
+        assessment:
+          unlockedFacts.length > 0
+            ? "The candidate asked at least one question that reached decision-critical context."
+            : "The questions did not expose a clear hypothesis, stakeholder lens, or risk model.",
+        evidence: firstQuestion,
+      },
+      adaptiveFollowUp: {
+        label: askedQuestions.length >= 2 ? "Some follow-up signal" : "Limited",
+        assessment:
+          askedQuestions.length >= 2
+            ? "Review whether later questions build on earlier answers or simply continue broad probing."
+            : "There was not enough transcript to assess adaptive follow-up.",
+        evidence: laterQuestion,
+      },
+      ownershipPosture: {
+        label:
+          deterministic.percent >= 75
+            ? "Collaborator / owner"
+            : deterministic.percent >= 45
+              ? "Developing collaborator"
+              : "Approval-seeking or narrow executor",
+        assessment:
+          "Fallback assessment uses information gain as a proxy; use the transcript to confirm whether the candidate is calibrating direction or asking for approval on details.",
+        evidence: askedQuestions.slice(0, 2).join(" | ") || "No questions.",
+      },
+      groundedNextStep: {
+        label: finalRecommendation ? "Submitted" : "Missing",
+        assessment: finalRecommendation
+          ? "A next step was submitted; compare it against earned and missed context."
+          : "No next immediate step was submitted.",
+        evidence: finalRecommendation || "No next immediate step.",
+      },
+    },
     strengths:
       unlockedFacts.length > 0
         ? unlockedFacts.slice(0, 3).map((fact) => `Uncovered: ${fact.title}.`)
@@ -68,6 +108,17 @@ function fallbackAssessment(
   };
 }
 
+function normalizeSignalDimension(
+  value: Partial<SignalDimension> | undefined,
+  fallback: SignalDimension
+): SignalDimension {
+  return {
+    label: value?.label || fallback.label,
+    assessment: value?.assessment || fallback.assessment,
+    evidence: value?.evidence || fallback.evidence,
+  };
+}
+
 function extractJson(text: string) {
   const trimmed = text.trim();
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) return trimmed;
@@ -76,9 +127,41 @@ function extractJson(text: string) {
 }
 
 function normalizeAssessment(value: Partial<ValidatorAssessment>) {
+  const fallbackBreakdown = fallbackAssessment(
+    {
+      percent: 0,
+      label: "Developing ambiguity reducer",
+      unlockedWeight: 0,
+      totalWeight: 0,
+      missedFacts: [],
+    },
+    [],
+    [],
+    ""
+  ).signalBreakdown!;
+  const breakdown = value.signalBreakdown;
+
   return {
     label: value.label || "Developing ambiguity reducer",
     summary: value.summary || "The validator produced an incomplete summary.",
+    signalBreakdown: {
+      questionQuality: normalizeSignalDimension(
+        breakdown?.questionQuality,
+        fallbackBreakdown.questionQuality
+      ),
+      adaptiveFollowUp: normalizeSignalDimension(
+        breakdown?.adaptiveFollowUp,
+        fallbackBreakdown.adaptiveFollowUp
+      ),
+      ownershipPosture: normalizeSignalDimension(
+        breakdown?.ownershipPosture,
+        fallbackBreakdown.ownershipPosture
+      ),
+      groundedNextStep: normalizeSignalDimension(
+        breakdown?.groundedNextStep,
+        fallbackBreakdown.groundedNextStep
+      ),
+    },
     strengths: Array.isArray(value.strengths) ? value.strengths : [],
     concerns: Array.isArray(value.concerns) ? value.concerns : [],
     evidence: Array.isArray(value.evidence) ? value.evidence : [],
