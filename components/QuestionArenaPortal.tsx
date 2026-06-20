@@ -3,19 +3,24 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2,
+  ClipboardList,
   Keyboard,
+  MessageSquare,
   Mic,
   Send,
 } from "lucide-react";
 import {
   gatekeepQuestion,
   generateManagerAnswer,
+  scoreInformationGain,
 } from "@/lib/questionArena/answerer";
 import type {
   GatekeeperDecision,
   Message,
   QuestionClassification,
   ScenarioConfig,
+  ScenarioCritique,
+  CriterionNode,
   ValidatorReport,
 } from "@/lib/questionArena/types";
 
@@ -59,6 +64,16 @@ interface StoredAssessmentScenario {
       description?: string;
     }>;
   };
+  critique?: {
+    scenarioId: string;
+    criteria: Array<{
+      id: string;
+      evidence: string;
+      tags: string[];
+      score: number;
+      followups: unknown[];
+    }>;
+  };
 }
 
 interface StoredRawSavedScenario {
@@ -76,6 +91,15 @@ interface StoredRawSavedScenario {
     };
   };
 }
+
+type InterviewPhase =
+  | "task_drop"
+  | "brief"
+  | "greeting"
+  | "signals"
+  | "workspace"
+  | "next_step"
+  | "submitted";
 
 function formatJson(value: unknown) {
   return JSON.stringify(value, null, 2);
@@ -132,6 +156,35 @@ function firstAssessmentScenario(stored: StoredAssessmentPackage) {
   } satisfies StoredAssessmentScenario;
 }
 
+function flattenCriteria(criteria: CriterionNode[], depth = 0): CriterionNode[] {
+  const result: CriterionNode[] = [];
+  for (const c of criteria) {
+    result.push(c);
+    if (c.followups?.length) {
+      result.push(...flattenCriteria(c.followups, depth + 1));
+    }
+  }
+  return result;
+}
+
+function critiqueToHiddenFacts(critique: ScenarioCritique) {
+  const flat = flattenCriteria(critique.criteria as CriterionNode[]);
+  return flat
+    .filter((c) => c.evidence?.trim())
+    .map((c, index) => ({
+      id: c.id || `critique_${index}`,
+      title: c.tags?.slice(0, 3).join(", ") || c.evidence.slice(0, 50),
+      fact: c.evidence,
+      category: c.tags?.[0] || "evidence",
+      weight: c.score || 0.5,
+      knowledgeLevel: "direct" as const,
+      unlockTriggers: c.tags || [],
+      requiresSpecificity: false,
+      sampleResponse: c.evidence,
+      whyItMatters: `This evidence (weight ${c.score}) is part of the scoring rubric.`,
+    }));
+}
+
 function scenarioConfigFromAssessment(
   stored: StoredAssessmentPackage,
   fallbackRole: string
@@ -149,6 +202,73 @@ function scenarioConfigFromAssessment(
       [member.memberName, member.description].filter(Boolean).join(": ")
     )
     .filter(Boolean);
+
+  // Build hiddenFacts from critique if available, otherwise use generic fallbacks
+  const critique = item.critique as ScenarioCritique | undefined;
+  const critiqueHiddenFacts = critique?.criteria?.length
+    ? critiqueToHiddenFacts(critique)
+    : [];
+
+  const hiddenFacts = critiqueHiddenFacts.length > 0
+    ? critiqueHiddenFacts
+    : [
+        {
+          id: "impact_scope",
+          title: "Impact and scope",
+          fact: "The candidate should ask who or what is affected before proposing a fix.",
+          category: "scope",
+          weight: 1,
+          knowledgeLevel: "direct" as const,
+          unlockTriggers: ["who", "affected", "impact", "scope", "users", "customers"],
+          requiresSpecificity: false,
+          sampleResponse:
+            "The first useful thing is to establish impact and scope before jumping to a fix.",
+          whyItMatters:
+            "Good incident work starts by understanding blast radius.",
+        },
+        {
+          id: "evidence",
+          title: "Evidence and reproduction",
+          fact: "The candidate should ask for logs, repro path, timing, and concrete evidence.",
+          category: "debugging",
+          weight: 1,
+          knowledgeLevel: "direct" as const,
+          unlockTriggers: ["logs", "reproduce", "evidence", "trace", "error", "when"],
+          requiresSpecificity: false,
+          sampleResponse:
+            "I would anchor on the concrete evidence: logs, timing, repro steps, and what changed around the failure.",
+          whyItMatters:
+            "This rewards evidence-driven debugging rather than guessing.",
+        },
+        {
+          id: "change_or_boundary",
+          title: "Change or system boundary",
+          fact: "The candidate should inspect recent changes and integration/data-shape boundaries.",
+          category: "root-cause",
+          weight: 1,
+          knowledgeLevel: "hedged" as const,
+          unlockTriggers: ["changed", "deploy", "release", "dependency", "payload", "type", "boundary"],
+          requiresSpecificity: false,
+          sampleResponse:
+            "A useful angle is whether a recent change or boundary mismatch changed what the downstream system receives.",
+          whyItMatters:
+            "Many ambiguous failures come from boundary mismatches, not the visible symptom alone.",
+        },
+        {
+          id: "next_step",
+          title: "Next immediate step",
+          fact: "The candidate should choose a high-signal next action under uncertainty.",
+          category: "ownership",
+          weight: 1,
+          knowledgeLevel: "direct" as const,
+          unlockTriggers: ["next", "priority", "mitigation", "rollback", "risk", "deadline"],
+          requiresSpecificity: false,
+          sampleResponse:
+            "I care about the next high-signal action you would take, not a perfect final answer immediately.",
+          whyItMatters:
+            "This tests ownership and practical judgment.",
+        },
+      ];
 
   return {
     id: item.id || stored.id,
@@ -195,64 +315,7 @@ function scenarioConfigFromAssessment(
         whenToReveal: ["focus", "skill", "evaluate", "looking for"],
       },
     ],
-    hiddenFacts: [
-      {
-        id: "impact_scope",
-        title: "Impact and scope",
-        fact: "The candidate should ask who or what is affected before proposing a fix.",
-        category: "scope",
-        weight: 1,
-        knowledgeLevel: "direct",
-        unlockTriggers: ["who", "affected", "impact", "scope", "users", "customers"],
-        requiresSpecificity: true,
-        sampleResponse:
-          "The first useful thing is to establish impact and scope before jumping to a fix.",
-        whyItMatters:
-          "Good incident work starts by understanding blast radius.",
-      },
-      {
-        id: "evidence",
-        title: "Evidence and reproduction",
-        fact: "The candidate should ask for logs, repro path, timing, and concrete evidence.",
-        category: "debugging",
-        weight: 1,
-        knowledgeLevel: "direct",
-        unlockTriggers: ["logs", "reproduce", "evidence", "trace", "error", "when"],
-        requiresSpecificity: true,
-        sampleResponse:
-          "I would anchor on the concrete evidence: logs, timing, repro steps, and what changed around the failure.",
-        whyItMatters:
-          "This rewards evidence-driven debugging rather than guessing.",
-      },
-      {
-        id: "change_or_boundary",
-        title: "Change or system boundary",
-        fact: "The candidate should inspect recent changes and integration/data-shape boundaries.",
-        category: "root-cause",
-        weight: 1,
-        knowledgeLevel: "hedged",
-        unlockTriggers: ["changed", "deploy", "release", "dependency", "payload", "type", "boundary"],
-        requiresSpecificity: true,
-        sampleResponse:
-          "A useful angle is whether a recent change or boundary mismatch changed what the downstream system receives.",
-        whyItMatters:
-          "Many ambiguous failures come from boundary mismatches, not the visible symptom alone.",
-      },
-      {
-        id: "next_step",
-        title: "Next immediate step",
-        fact: "The candidate should choose a high-signal next action under uncertainty.",
-        category: "ownership",
-        weight: 1,
-        knowledgeLevel: "direct",
-        unlockTriggers: ["next", "priority", "mitigation", "rollback", "risk", "deadline"],
-        requiresSpecificity: true,
-        sampleResponse:
-          "I care about the next high-signal action you would take, not a perfect final answer immediately.",
-        whyItMatters:
-          "This tests ownership and practical judgment.",
-      },
-    ],
+    hiddenFacts,
     trapAssumptions: [
       {
         id: "visible_error_is_full_answer",
@@ -265,6 +328,292 @@ function scenarioConfigFromAssessment(
     ],
     idealRecommendation:
       "Ask targeted questions to establish impact, evidence, likely boundary/change, and the next immediate action.",
+    critique: critique || undefined,
+  };
+}
+
+function managerOpeningMessage() {
+  return "I'm here. Ask me what you need to know before deciding your next step.";
+}
+
+function contextAreas(scenario: ScenarioConfig) {
+  const areas = [
+    ...(scenario.persona.expertise || []),
+    ...scenario.hiddenFacts.map((fact) => fact.category),
+  ]
+    .map((item) => item?.trim())
+    .filter(Boolean);
+
+  return Array.from(new Set(areas)).slice(0, 4);
+}
+
+function managerSummary(scenario: ScenarioConfig) {
+  const directKnowledge = scenario.persona.directKnowledge?.[0];
+  if (directKnowledge) {
+    return `${scenario.persona.name} is close to this work and has context from ${directKnowledge}.`;
+  }
+
+  return `${scenario.persona.name} is close to this work and can answer focused questions about the situation.`;
+}
+
+function candidateBrief(prompt: string) {
+  const cleaned = prompt
+    .replace(/\s+/g, " ")
+    .replace(/\s*Review the following signals.*$/i, "")
+    .replace(/\s*The logs show the following error:.*$/i, "")
+    .trim();
+  if (cleaned.length <= 260) return cleaned;
+
+  const boundary = cleaned.slice(0, 260).lastIndexOf(".");
+  if (boundary > 140) return cleaned.slice(0, boundary + 1).trim();
+  return `${cleaned.slice(0, 240).trim()}...`;
+}
+
+function samGreetingLines(scenario: ScenarioConfig) {
+  return [
+    `I'm ${scenario.persona.name} — I'll be your ${scenario.persona.role.toLowerCase()} for this scenario.`,
+    "Ask me focused questions to understand what's going on. I'll tell you what you ask, but I won't hand you the diagnosis.",
+    `You have ${scenario.maxQuestions} questions. When you're ready, you'll commit to your next immediate step.`,
+    "Take your time. Let me know when you're ready.",
+  ];
+}
+
+function compactText(text: string, maxLength = 180) {
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  if (cleaned.length <= maxLength) return cleaned;
+  const boundary = cleaned.slice(0, maxLength).lastIndexOf(".");
+  if (boundary > maxLength * 0.45) return cleaned.slice(0, boundary + 1).trim();
+  return `${cleaned.slice(0, maxLength - 3).trim()}...`;
+}
+
+function taskTicketRows(scenario: ScenarioConfig) {
+  const prompt = scenario.candidatePrompt;
+  const firstFocus = scenario.scope?.focus?.[0] || scenario.persona.expertise?.[0];
+  return [
+    ["Role", scenario.role || "Candidate"],
+    ["Symptom", compactText(prompt, 150)],
+    ["Scope", firstFocus || "Use questions to narrow the scope"],
+  ];
+}
+
+function visibleSignals(scenario: ScenarioConfig) {
+  const prompt = scenario.candidatePrompt.replace(/\s+/g, " ").trim();
+  const signals: Array<{ label: string; value: string }> = [];
+  const errorMatch = prompt.match(
+    /(error(?: message)?(?: reported)? is:?|logs? show(?:s)?(?: the following error)?:?)\s*([`"']?[^.]+(?:\.[^A-Z]|$)?)/i
+  );
+  if (errorMatch?.[2]) {
+    signals.push({
+      label: "Observable signal",
+      value: compactText(errorMatch[2].replace(/^[:\s]+/, ""), 190),
+    });
+  }
+
+  const scopeText =
+    scenario.scope?.focus?.[0] ||
+    scenario.todos?.[0] ||
+    scenario.persona.expertise?.slice(0, 2).join(", ");
+  if (scopeText) {
+    signals.push({ label: "Initial focus", value: compactText(scopeText, 160) });
+  }
+
+  if (signals.length === 0) {
+    signals.push({ label: "Task brief", value: compactText(prompt, 190) });
+  }
+
+  if (signals.length === 1) {
+    signals.push({
+      label: "What is missing",
+      value: `Everything beyond this visible signal should be learned by asking ${scenario.persona.name}.`,
+    });
+  }
+
+  return signals.slice(0, 3);
+}
+
+const LOCAL_REPORT_SCENARIO_ID = "user_api_export_connection_leak";
+
+function hasAny(text: string, terms: string[]) {
+  return terms.some((term) => text.includes(term));
+}
+
+function buildLocalConnectionLeakReport(
+  scenario: ScenarioConfig,
+  messages: Message[],
+  unlockedFactIds: string[],
+  finalRecommendation: string
+): ValidatorReport {
+  const deterministic = scoreInformationGain(scenario, unlockedFactIds);
+  const unlockedFacts = scenario.hiddenFacts.filter((fact) =>
+    unlockedFactIds.includes(fact.id)
+  );
+  const missedFacts = scenario.hiddenFacts.filter(
+    (fact) => !unlockedFactIds.includes(fact.id)
+  );
+  const askedQuestions = messages
+    .filter((message) => message.role === "candidate")
+    .map((message) => message.content);
+  const transcriptText = askedQuestions.join(" ").toLowerCase();
+  const nextStepText = finalRecommendation.toLowerCase();
+  const identifiedLeak = hasAny(nextStepText, [
+    "leak",
+    "release",
+    "close",
+    "finally",
+    "cleanup",
+    "error path",
+    "early return",
+  ]);
+  const mitigatedIncident = hasAny(nextStepText, [
+    "disable",
+    "block",
+    "feature flag",
+    "rollback",
+    "stop",
+    "restart",
+    "recycle",
+    "drain",
+  ]);
+  const preventionPlan = hasAny(nextStepText, [
+    "test",
+    "finally",
+    "helper",
+    "lint",
+    "review",
+    "alert",
+    "metric",
+    "monitor",
+  ]);
+  const askedLifecycle = hasAny(transcriptText, [
+    "connection",
+    "release",
+    "close",
+    "finally",
+    "error path",
+    "leak",
+  ]);
+  const askedMitigation = hasAny(transcriptText, [
+    "mitigation",
+    "stop bleeding",
+    "disable",
+    "rollback",
+    "stabilize",
+  ]);
+  const localLabel =
+    deterministic.percent >= 75 && identifiedLeak && mitigatedIncident
+      ? "Strong incident debugger"
+      : deterministic.percent >= 45 || identifiedLeak
+        ? "Developing incident debugger"
+        : "Needs stronger resource-lifecycle reasoning";
+
+  return {
+    deterministic: {
+      ...deterministic,
+      label: localLabel,
+    },
+    assessment: {
+      label: localLabel,
+      summary:
+        deterministic.percent >= 75
+          ? "The candidate connected the production symptoms to a resource-lifecycle failure and had enough context to choose a grounded next step."
+          : deterministic.percent >= 45
+            ? "The candidate found part of the connection-leak story, but the report should still check whether they separated mitigation, fix, and prevention."
+            : "The candidate did not uncover enough of the connection lifecycle to confidently explain the incident or choose the right immediate action.",
+      signalBreakdown: {
+        questionQuality: {
+          label: askedLifecycle ? "Connection-lifecycle focused" : "Too broad",
+          assessment: askedLifecycle
+            ? "The questions probed the open/use/close lifecycle and the error path where a connection can be leaked."
+            : "The questions did not clearly follow the literal connection-pool error toward resource cleanup.",
+          evidence: askedQuestions[0] || "No question recorded.",
+        },
+        adaptiveFollowUp: {
+          label:
+            askedQuestions.length >= 3
+              ? "Built a triage path"
+              : "Limited transcript",
+          assessment:
+            askedQuestions.length >= 3
+              ? "The candidate gathered enough facts to move from symptoms, to suspected code path, to mitigation."
+              : "There were too few questions to show a complete incident triage path.",
+          evidence:
+            askedQuestions.slice(1, 4).join(" | ") ||
+            "No follow-up question recorded.",
+        },
+        ownershipPosture: {
+          label:
+            askedMitigation || mitigatedIncident
+              ? "Stops the bleeding"
+              : "Diagnosis-heavy",
+          assessment:
+            askedMitigation || mitigatedIncident
+              ? "The candidate addressed production stability before the durable code fix."
+              : "The candidate needs to explicitly separate immediate mitigation from the permanent fix.",
+          evidence:
+            askedQuestions.find((question) =>
+              /mitigation|stop|disable|rollback|stabil/i.test(question)
+            ) || finalRecommendation,
+        },
+        groundedNextStep: {
+          label:
+            identifiedLeak && mitigatedIncident && preventionPlan
+              ? "Grounded and complete"
+              : identifiedLeak && mitigatedIncident
+                ? "Good immediate step"
+                : "Incomplete",
+          assessment:
+            identifiedLeak && mitigatedIncident && preventionPlan
+              ? "The next step covers incident mitigation, the likely cleanup bug, and prevention for future error-path leaks."
+              : identifiedLeak && mitigatedIncident
+                ? "The next step handles the incident and likely bug; add explicit follow-up tests/alerts for prevention."
+                : "The next step should name the connection leak, stop new export traffic, and guarantee release in cleanup code.",
+          evidence: finalRecommendation,
+        },
+      },
+      strengths:
+        unlockedFacts.length > 0
+          ? unlockedFacts
+              .slice(0, 4)
+              .map((fact) => `Uncovered ${fact.title}: ${fact.whyItMatters}`)
+          : [
+              "Kept the flow moving, but did not unlock decision-critical context.",
+            ],
+      concerns: [
+        ...missedFacts
+          .slice(0, 3)
+          .map((fact) => `Missed ${fact.title}: ${fact.whyItMatters}`),
+        ...(!mitigatedIncident
+          ? [
+              "Next step should explicitly stop new `/export` traffic before the code fix ships.",
+            ]
+          : []),
+        ...(!preventionPlan
+          ? [
+              "Follow-up should include error-path tests, a cleanup helper or `finally`, and pool usage alerts.",
+            ]
+          : []),
+      ].slice(0, 5),
+      evidence:
+        askedQuestions.length > 0
+          ? askedQuestions.slice(0, 5).map((question) => `Asked: ${question}`)
+          : ["No candidate questions were recorded."],
+      finalRecommendationAssessment:
+        identifiedLeak && mitigatedIncident
+          ? "The submitted next step is demo-ready: it stabilizes production first and points to the connection cleanup bug."
+          : "The submitted next step needs to explicitly connect the incident to a leaked DB connection and stop `/export` traffic while the fix is prepared.",
+      nextInterviewFocus:
+        missedFacts.length > 0
+          ? missedFacts
+              .slice(0, 2)
+              .map((fact) => `Probe ${fact.category}: ${fact.title}.`)
+          : [
+              "Ask the candidate to write the concrete `try/finally` or helper pattern they would use in code review.",
+            ],
+    },
+    modelUsed: "local-demo-rubric",
+    source: "fallback",
+    warning:
+      "Generated locally from the backend connection-leak demo rubric; no evaluator API call was made.",
   };
 }
 
@@ -309,14 +658,21 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
     "Model endpoint not tested in UI."
   );
   const [devMode, setDevMode] = useState(initialDevMode);
+  const [interviewPhase, setInterviewPhase] =
+    useState<InterviewPhase>("task_drop");
+  const [visibleGreetingCount, setVisibleGreetingCount] = useState(0);
   const [voiceMode, setVoiceMode] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState("");
   const loadedAssessmentRef = useRef<string | null>(null);
+  const questionInputRef = useRef<HTMLInputElement | null>(null);
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
   const audioRef = useRef<AudioBufferSourceNode | null>(null);
 
-  const questionsLeft = Math.max(scenario.maxQuestions - messages.length / 2, 0);
+  const candidateQuestionCount = messages.filter(
+    (message) => message.role === "candidate"
+  ).length;
+  const questionsLeft = Math.max(scenario.maxQuestions - candidateQuestionCount, 0);
   const unlockedFacts = useMemo(
     () =>
       scenario.hiddenFacts.filter((fact) => unlockedFactIds.includes(fact.id)),
@@ -355,6 +711,33 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
     ? "grid items-start grid-cols-[minmax(360px,0.9fr)_minmax(440px,1.2fr)_minmax(260px,0.7fr)] gap-4 max-[1180px]:grid-cols-1"
     : "mx-auto grid w-full max-w-7xl grid-cols-1 items-start";
   const assessmentUnavailable = Boolean(assessmentLoadError);
+  const showTaskDrop =
+    !devMode && interviewPhase === "task_drop" && !assessmentUnavailable;
+  const showGreeting =
+    !devMode && interviewPhase === "greeting" && !assessmentUnavailable;
+  const canAskQuestions =
+    interviewPhase === "workspace" && !assessmentUnavailable && questionsLeft > 0;
+  const visibleContextAreas = useMemo(() => contextAreas(scenario), [scenario]);
+  const visibleBrief = useMemo(
+    () => candidateBrief(scenario.candidatePrompt),
+    [scenario.candidatePrompt]
+  );
+  const greetingLines = useMemo(() => samGreetingLines(scenario), [scenario]);
+  const ticketRows = useMemo(() => taskTicketRows(scenario), [scenario]);
+  const progressIndex =
+    interviewPhase === "submitted"
+      ? 3
+      : interviewPhase === "next_step"
+        ? 2
+        : interviewPhase === "workspace"
+          ? 1
+          : 0;
+  const pageClassName = devMode
+    ? "min-h-screen p-4"
+    : "min-h-screen overflow-x-hidden bg-[linear-gradient(155deg,#edecea_0%,#e7e8eb_55%,#e9e7e4_100%)] px-4 py-7 text-[#17171c]";
+  const interviewShellClassName = devMode
+    ? "relative grid min-h-[calc(100vh-2rem)] overflow-hidden rounded-lg border border-slate-800 bg-surface shadow-2xl shadow-slate-950/40 lg:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]"
+    : "relative mx-auto w-full max-w-[600px]";
 
   function resetRun(nextScenario = scenario) {
     setMessages([]);
@@ -363,8 +746,53 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
     setUnlockedFactIds([]);
     setLastDecision(null);
     setReport(null);
+    setInterviewPhase("task_drop");
+    setVisibleGreetingCount(0);
+    setTranscript("");
+    setVoiceMode(false);
     setStatus(`Run reset for ${nextScenario.title}.`);
   }
+
+  function enterWorkspace() {
+    setMessages((current) =>
+      current.length
+        ? current
+        : [{ role: "manager", content: "Go ahead — what would you like to know?" }]
+    );
+    setInterviewPhase("workspace");
+    window.scrollTo({ top: 0, behavior: "auto" });
+    setStatus(`Workspace opened for ${scenario.title}.`);
+  }
+
+  function openGreeting() {
+    setVisibleGreetingCount(0);
+    setInterviewPhase("greeting");
+    window.scrollTo({ top: 0, behavior: "auto" });
+    setStatus(`Introduced ${scenario.persona.name}.`);
+  }
+
+  function moveToNextStep() {
+    setInterviewPhase("next_step");
+    setStatus("Ready for next immediate step.");
+  }
+
+  useEffect(() => {
+    if (interviewPhase !== "workspace" || voiceMode) return;
+    questionInputRef.current?.focus();
+  }, [interviewPhase, voiceMode]);
+
+  useEffect(() => {
+    if (interviewPhase !== "greeting") return;
+    setVisibleGreetingCount(0);
+    const timers = greetingLines.map((_, index) =>
+      window.setTimeout(() => {
+        setVisibleGreetingCount(index + 1);
+      }, 360 + index * 680)
+    );
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, [interviewPhase, greetingLines]);
 
   function loadTemplate(id: string) {
     const next = scenarios.find((item) => item.id === id) ?? scenarios[0];
@@ -521,7 +949,7 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
   async function askManager(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const text = question.trim();
-    if (!text || questionsLeft <= 0 || loadingAnswer) return;
+    if (!text || !canAskQuestions || loadingAnswer) return;
 
     setQuestion("");
     setLoadingAnswer(true);
@@ -574,6 +1002,9 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
       setUnlockedFactIds(nextUnlocked);
       setLastDecision(decision);
       setReport(null);
+      if (questionsLeft <= 1) {
+        setInterviewPhase("next_step");
+      }
       void speakManagerAnswer(answer);
     } catch (error) {
       setQuestion(text);
@@ -584,6 +1015,29 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
   }
 
   async function generateReport() {
+    const nextStep = finalRecommendation.trim();
+    if (!nextStep) {
+      setStatus("Write your next immediate step before submitting.");
+      return;
+    }
+    if (assessmentUnavailable) {
+      setStatus("Assessment link unavailable.");
+      return;
+    }
+
+    if (scenario.id === LOCAL_REPORT_SCENARIO_ID) {
+      const data = buildLocalConnectionLeakReport(
+        scenario,
+        messages,
+        unlockedFactIds,
+        nextStep
+      );
+      setReport(data);
+      setStatus("Generated local demo report for the connection-leak scenario.");
+      setInterviewPhase("submitted");
+      return;
+    }
+
     setLoadingEvaluation(true);
     try {
       const res = await fetch("/api/question-arena/evaluate", {
@@ -593,7 +1047,7 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
           scenario,
           messages,
           unlockedFactIds,
-          finalRecommendation,
+          finalRecommendation: nextStep,
           evaluatorPrompt,
         }),
       });
@@ -605,6 +1059,7 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
           ? data.warning
           : `Validator report generated with ${data.modelUsed} (${data.source}).`
       );
+      setInterviewPhase("submitted");
     } catch (error) {
       setStatus(
         error instanceof Error ? error.message : "Validator report failed."
@@ -671,6 +1126,7 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
   }
 
   function startRecording() {
+    if (!canAskQuestions || loadingAnswer) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const Win = window as any;
     const SR = Win.SpeechRecognition ?? Win.webkitSpeechRecognition;
@@ -705,7 +1161,7 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
     recognition.onend = () => {
       setIsRecording(false);
       const text = finalText.trim();
-      if (text) {
+      if (text && canAskQuestions) {
         setTranscript("");
         void (async () => {
           const q = text;
@@ -735,6 +1191,9 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
             setUnlockedFactIds(nextUnlocked);
             setLastDecision(decision);
             setReport(null);
+            if (questionsLeft <= 1) {
+              setInterviewPhase("next_step");
+            }
             void speakManagerAnswer(answer);
           } catch (error) {
             setQuestion(q);
@@ -772,33 +1231,56 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
   }
 
   return (
-    <div className="min-h-screen p-4">
-      <div className="mb-3 flex justify-end">
-        <div className="flex items-center gap-3 rounded-full border border-slate-800 bg-surface px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-300">
-          <span>Dev Mode</span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={devMode}
-            aria-label={devMode ? "Disable dev mode" : "Enable dev mode"}
-            onClick={() => setDevMode((current) => !current)}
-            className={`relative h-6 w-11 rounded-full border transition-colors ${
-              devMode
-                ? "border-emerald-300 bg-emerald-300"
-                : "border-slate-700 bg-slate-900"
-            }`}
-          >
-            <span
-              className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-slate-950 transition-transform ${
-                devMode ? "translate-x-5" : "translate-x-0"
+    <div className={pageClassName}>
+      {devMode ? (
+        <div className="mb-3 flex justify-end">
+          <div className="flex items-center gap-3 rounded-full border border-slate-800 bg-surface px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-300">
+            <span>Dev Mode</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={devMode}
+              aria-label={devMode ? "Disable dev mode" : "Enable dev mode"}
+              onClick={() => setDevMode((current) => !current)}
+              className={`relative h-6 w-11 rounded-full border transition-colors ${
+                devMode
+                  ? "border-emerald-300 bg-emerald-300"
+                  : "border-slate-700 bg-slate-900"
               }`}
-            />
-          </button>
-          <span className="min-w-6 text-slate-500">
-            {devMode ? "On" : "Off"}
-          </span>
+            >
+              <span
+                className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-slate-950 transition-transform ${
+                  devMode ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
+            <span className="min-w-6 text-slate-500">
+              {devMode ? "On" : "Off"}
+            </span>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="mx-auto mb-5 w-full max-w-[600px]">
+          <div className="grid grid-cols-4 gap-2 rounded-[28px] border border-white/75 bg-white/55 px-5 py-3 shadow-[0_10px_30px_rgba(38,38,54,.10),inset_0_1px_0_rgba(255,255,255,.85)] backdrop-blur-2xl">
+            {["Brief", "Investigate", "Decide", "Done"].map((label, index) => (
+              <div key={label}>
+                <div
+                  className={`h-1 rounded-full transition ${
+                    index <= progressIndex ? "bg-[#3a3a42]" : "bg-black/10"
+                  }`}
+                />
+                <span
+                  className={`mt-2 block text-center text-[10px] font-semibold uppercase tracking-[0.1em] ${
+                    index === progressIndex ? "text-[#17171c]" : "text-[#a6a6b0]"
+                  }`}
+                >
+                  {label}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className={layoutClassName}>
         {devMode && (
@@ -964,16 +1446,513 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
       </section>
         )}
 
-      <section className="grid min-h-[calc(100vh-2rem)] overflow-hidden rounded-lg border border-slate-800 bg-surface shadow-2xl shadow-slate-950/40 lg:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]">
-        <aside className="flex max-h-[calc(100vh-2rem)] min-h-0 flex-col border-b border-slate-800 bg-slate-950/50 lg:border-b-0 lg:border-r">
-          <div className="border-b border-slate-800 px-5 py-5 text-center">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-300">
-              Scenario
+      <section className={interviewShellClassName}>
+        {!devMode ? (
+          <>
+            {assessmentLoadError ? (
+              <div className="rounded-[28px] border border-white/75 bg-white/60 p-8 shadow-[0_24px_60px_rgba(38,38,54,.13)] backdrop-blur-2xl">
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#6e6e78]">
+                  Assessment unavailable
+                </p>
+                <h1 className="mt-3 text-3xl font-extrabold tracking-[-0.035em] text-[#17171c]">
+                  Link could not load
+                </h1>
+                <p className="mt-4 text-[15px] font-medium leading-7 text-[#3a3a42]">
+                  {assessmentLoadError}
+                </p>
+              </div>
+            ) : (
+              <>
+                {interviewPhase === "task_drop" && (
+                  <div className="grid min-h-[60vh] place-items-center">
+                    <button
+                      type="button"
+                      onClick={() => setInterviewPhase("brief")}
+                      className="group w-full rounded-[28px] border border-white/75 bg-white/55 p-9 text-center shadow-[0_24px_60px_rgba(38,38,54,.13),inset_0_1px_0_rgba(255,255,255,.85)] backdrop-blur-2xl transition hover:-translate-y-1"
+                    >
+                      <span className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white/40 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.16em] text-[#6e6e78]">
+                        <span className="h-2 w-2 rounded-full bg-[#c9743a]" />
+                        New assignment · just now
+                      </span>
+                      <span className="mx-auto my-6 grid h-[70px] w-[70px] place-items-center rounded-[20px] border border-white/75 bg-white/70 shadow-[0_10px_30px_rgba(38,38,54,.10)]">
+                        <MessageSquare className="h-8 w-8 text-[#3a3a42]" />
+                      </span>
+                      <span className="block text-xl font-bold tracking-[-0.02em] text-[#17171c]">
+                        A task has been assigned to you
+                      </span>
+                      <span className="mt-2 block text-sm font-medium text-[#6e6e78]">
+                        From <strong>{scenario.persona.name}</strong> ·{" "}
+                        {scenario.persona.role}
+                      </span>
+                      <span className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-[#17171c]">
+                        Tap to open{" "}
+                        <span className="transition group-hover:translate-x-1">→</span>
+                      </span>
+                    </button>
+                  </div>
+                )}
+
+                {interviewPhase === "brief" && (
+                  <div className="rounded-[28px] border border-white/75 bg-white/55 p-8 shadow-[0_24px_60px_rgba(38,38,54,.13),inset_0_1px_0_rgba(255,255,255,.85)] backdrop-blur-2xl">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#6e6e78]">
+                      Assignment
+                    </p>
+                    <h1 className="mt-3 text-[32px] font-extrabold leading-tight tracking-[-0.035em] text-[#17171c]">
+                      {scenario.title}
+                    </h1>
+                    <div className="mt-5 flex items-center gap-3">
+                      <div className="grid h-11 w-11 place-items-center rounded-full border border-white/75 bg-white/70 text-base font-bold text-[#3a3a42] shadow-[0_10px_30px_rgba(38,38,54,.10)]">
+                        {scenario.persona.name.slice(0, 1).toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-[#17171c]">
+                          {scenario.persona.name}
+                        </p>
+                        <p className="text-sm font-medium text-[#6e6e78]">
+                          {scenario.persona.role}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-5 rounded-[18px] border border-black/10 bg-white/40 px-5 py-4">
+                      {ticketRows.map(([key, value]) => (
+                        <div
+                          key={key}
+                          className="grid grid-cols-[88px_1fr] gap-3 py-1.5 text-sm leading-6"
+                        >
+                          <span className="font-semibold text-[#a6a6b0]">
+                            {key}
+                          </span>
+                          <span className="font-medium text-[#3a3a42]">
+                            {value}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={openGreeting}
+                      className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-[14px] bg-[#17171c] px-5 py-3.5 text-[15px] font-semibold text-white transition hover:-translate-y-0.5 hover:bg-black"
+                    >
+                      Continue →
+                    </button>
+                  </div>
+                )}
+
+                {interviewPhase === "greeting" && (
+                  <div className="rounded-[28px] border border-white/75 bg-white/55 p-8 shadow-[0_24px_60px_rgba(38,38,54,.13),inset_0_1px_0_rgba(255,255,255,.85)] backdrop-blur-2xl">
+                    <div className="flex items-center gap-4">
+                      <div className="grid h-16 w-16 place-items-center rounded-full border border-white/75 bg-white/70 text-[22px] font-bold text-[#3a3a42] shadow-[0_10px_30px_rgba(38,38,54,.10)]">
+                        {scenario.persona.name.slice(0, 1).toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="text-lg font-bold tracking-[-0.01em] text-[#17171c]">
+                          {scenario.persona.name}
+                        </p>
+                        <p className="font-medium text-[#6e6e78]">
+                          {scenario.persona.role}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-6 flex flex-col gap-3">
+                      {greetingLines
+                        .slice(0, visibleGreetingCount)
+                        .map((line) => (
+                          <div key={line} className="flex max-w-[90%] items-end gap-3">
+                            <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/75 bg-white/70 text-xs font-bold text-[#3a3a42]">
+                              {scenario.persona.name.slice(0, 1).toUpperCase()}
+                            </div>
+                            <div className="rounded-2xl rounded-bl-md border border-white/75 bg-white/60 px-4 py-3 text-[14.5px] font-medium leading-6 text-[#3a3a42]">
+                              {line}
+                            </div>
+                          </div>
+                        ))}
+                      {visibleGreetingCount < greetingLines.length && (
+                        <div className="flex max-w-[90%] items-end gap-3">
+                          <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/75 bg-white/70 text-xs font-bold text-[#3a3a42]">
+                            {scenario.persona.name.slice(0, 1).toUpperCase()}
+                          </div>
+                          <div className="rounded-2xl rounded-bl-md border border-white/75 bg-white/60 px-4 py-3 text-sm text-[#a6a6b0]">
+                            typing...
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    {visibleGreetingCount >= greetingLines.length && (
+                      <button
+                        type="button"
+                        onClick={() => setInterviewPhase("signals")}
+                        className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-[14px] bg-[#17171c] px-5 py-3.5 text-[15px] font-semibold text-white transition hover:-translate-y-0.5 hover:bg-black"
+                      >
+                        I'm ready →
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {interviewPhase === "signals" && (
+                  <div className="rounded-[28px] border border-white/75 bg-white/55 p-8 shadow-[0_24px_60px_rgba(38,38,54,.13),inset_0_1px_0_rgba(255,255,255,.85)] backdrop-blur-2xl">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#6e6e78]">
+                      What you can see
+                    </p>
+                    <h2 className="mt-3 text-[21px] font-bold tracking-[-0.02em] text-[#17171c]">
+                      The starting evidence
+                    </h2>
+                    <p className="mt-3 text-sm font-medium leading-6 text-[#6e6e78]">
+                      This is what's in front of you. Everything else, you'll
+                      learn by asking {scenario.persona.name}.
+                    </p>
+                    <div className="mt-5 rounded-2xl border border-black/10 bg-white/40 px-5 py-4">
+                      <div className="mb-3 flex items-center gap-3">
+                        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-[10px] border border-white/75 bg-white/70">
+                          <ClipboardList className="h-4 w-4 text-[#3a3a42]" />
+                        </div>
+                        <p className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-[#a6a6b0]">
+                          Full visible prompt
+                        </p>
+                      </div>
+                      <p className="whitespace-pre-wrap text-[13.5px] font-medium leading-7 text-[#3a3a42]">
+                        {scenario.candidatePrompt}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={enterWorkspace}
+                      className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-[14px] bg-[#17171c] px-5 py-3.5 text-[15px] font-semibold text-white transition hover:-translate-y-0.5 hover:bg-black"
+                    >
+                      Talk to {scenario.persona.name} →
+                    </button>
+                  </div>
+                )}
+
+                {interviewPhase === "workspace" && (
+                  <div className="rounded-[28px] border border-white/75 bg-white/55 p-8 shadow-[0_24px_60px_rgba(38,38,54,.13),inset_0_1px_0_rgba(255,255,255,.85)] backdrop-blur-2xl">
+                    <div className="mb-5 flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#6e6e78]">
+                          Investigate
+                        </p>
+                        <h2 className="mt-1 text-[21px] font-bold tracking-[-0.02em] text-[#17171c]">
+                          Ask {scenario.persona.name}
+                        </h2>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs font-semibold text-[#6e6e78]">
+                          <strong className="text-[#17171c]">{questionsLeft}</strong>{" "}
+                          left
+                        </span>
+                        <div className="flex gap-1">
+                          {Array.from({ length: scenario.maxQuestions }).map(
+                            (_, index) => (
+                              <span
+                                key={index}
+                                className={`h-1.5 w-4 rounded-full ${
+                                  index < questionsLeft
+                                    ? "bg-[#3a3a42]"
+                                    : "bg-black/10"
+                                }`}
+                              />
+                            )
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <details className="group mb-4 rounded-[18px] border border-black/10 bg-white/40 px-4 py-3">
+                      <summary className="cursor-pointer list-none">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-[#a6a6b0]">
+                              Task context
+                            </p>
+                            <p className="mt-1 text-[13.5px] font-medium leading-6 text-[#3a3a42] group-open:hidden">
+                              {compactText(scenario.candidatePrompt, 210)}
+                            </p>
+                          </div>
+                          <span className="shrink-0 rounded-full border border-black/10 bg-white/50 px-3 py-1 text-xs font-semibold text-[#6e6e78]">
+                            <span className="group-open:hidden">Expand</span>
+                            <span className="hidden group-open:inline">Collapse</span>
+                          </span>
+                        </div>
+                      </summary>
+                      <p className="mt-3 whitespace-pre-wrap border-t border-black/10 pt-3 text-[13.5px] font-medium leading-7 text-[#3a3a42]">
+                        {scenario.candidatePrompt}
+                      </p>
+                    </details>
+                    <div className="mb-4 flex max-h-[300px] min-h-[160px] flex-col gap-3 overflow-y-auto pr-1">
+                      {messages.map((message, index) => (
+                        <div
+                          key={`${message.role}-${index}`}
+                          className={`flex max-w-[90%] items-end gap-3 ${
+                            message.role === "candidate"
+                              ? "ml-auto flex-row-reverse"
+                              : ""
+                          }`}
+                        >
+                          {message.role === "manager" && (
+                            <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/75 bg-white/70 text-xs font-bold text-[#3a3a42]">
+                              {scenario.persona.name.slice(0, 1).toUpperCase()}
+                            </div>
+                          )}
+                          <div
+                            className={`rounded-2xl px-4 py-3 text-[14.5px] font-medium leading-6 ${
+                              message.role === "candidate"
+                                ? "rounded-br-md bg-[#17171c] text-white"
+                                : "rounded-bl-md border border-white/75 bg-white/60 text-[#3a3a42]"
+                            }`}
+                          >
+                            {message.content}
+                          </div>
+                        </div>
+                      ))}
+                      {loadingAnswer && (
+                        <div className="flex max-w-[90%] items-end gap-3">
+                          <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/75 bg-white/70 text-xs font-bold text-[#3a3a42]">
+                            {scenario.persona.name.slice(0, 1).toUpperCase()}
+                          </div>
+                          <div className="rounded-2xl rounded-bl-md border border-white/75 bg-white/60 px-4 py-3 text-sm text-[#a6a6b0]">
+                            typing...
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <form onSubmit={askManager}>
+                      <div className="flex items-center gap-2">
+                        <input
+                          ref={questionInputRef}
+                          value={question}
+                          onChange={(event) => setQuestion(event.target.value)}
+                          disabled={!canAskQuestions || loadingAnswer}
+                          placeholder={`Ask ${scenario.persona.name} a focused question...`}
+                          className="min-w-0 flex-1 rounded-[13px] border border-black/10 bg-white/50 px-4 py-3 text-[14.5px] font-medium text-[#17171c] outline-none transition placeholder:text-[#a6a6b0] focus:border-black/30 focus:bg-white/70 disabled:opacity-50"
+                        />
+                        <button
+                          disabled={!canAskQuestions || loadingAnswer}
+                          className="grid h-[46px] w-[46px] place-items-center rounded-[13px] bg-[#17171c] text-white transition hover:-translate-y-0.5 disabled:bg-black/10 disabled:text-black/30"
+                          aria-label="Send"
+                        >
+                          <Send className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </form>
+                    <p className="mt-3 text-xs font-medium text-[#a6a6b0]">
+                      {questionsLeft > 0
+                        ? `${scenario.persona.name} answers what you ask — keep questions specific.`
+                        : "Out of questions — write your next immediate step."}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={moveToNextStep}
+                      className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-[14px] border border-white/75 bg-white/70 px-5 py-3.5 text-[15px] font-semibold text-[#17171c] shadow-[0_10px_30px_rgba(38,38,54,.10)] transition hover:-translate-y-0.5"
+                    >
+                      Write my next immediate step →
+                    </button>
+                  </div>
+                )}
+
+                {interviewPhase === "next_step" && (
+                  <div className="rounded-[28px] border border-white/75 bg-white/55 p-8 shadow-[0_24px_60px_rgba(38,38,54,.13),inset_0_1px_0_rgba(255,255,255,.85)] backdrop-blur-2xl">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#6e6e78]">
+                      Decide
+                    </p>
+                    <h2 className="mt-3 text-[21px] font-bold tracking-[-0.02em] text-[#17171c]">
+                      Your next immediate step
+                    </h2>
+                    <div className="my-4 flex max-w-[90%] items-end gap-3">
+                      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/75 bg-white/70 text-xs font-bold text-[#3a3a42]">
+                        {scenario.persona.name.slice(0, 1).toUpperCase()}
+                      </div>
+                      <div className="rounded-2xl rounded-bl-md border border-white/75 bg-white/60 px-4 py-3 text-[14.5px] font-medium leading-6 text-[#3a3a42]">
+                        Based on what you've learned, what's the first concrete
+                        thing you'd do? In your own words.
+                      </div>
+                    </div>
+                    <textarea
+                      value={finalRecommendation}
+                      onChange={(event) => setFinalRecommendation(event.target.value)}
+                      placeholder="e.g. Reproduce locally by invoking the task with the observed payload and inspect the boundary where it is serialized..."
+                      className="min-h-[130px] w-full resize-y rounded-[15px] border border-black/10 bg-white/50 px-4 py-3 text-[14.5px] font-medium leading-6 text-[#17171c] outline-none transition placeholder:text-[#a6a6b0] focus:border-black/30 focus:bg-white/70"
+                    />
+                    {questionsLeft > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setInterviewPhase("workspace")}
+                        className="mt-3 w-full rounded-[14px] bg-transparent px-5 py-3 text-[15px] font-semibold text-[#6e6e78] transition hover:bg-white/40"
+                      >
+                        Ask another question
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={generateReport}
+                      disabled={loadingEvaluation || !finalRecommendation.trim()}
+                      className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-[14px] bg-[#17171c] px-5 py-3.5 text-[15px] font-semibold text-white transition hover:-translate-y-0.5 hover:bg-black disabled:bg-black/10 disabled:text-black/30"
+                    >
+                      {loadingEvaluation ? "Submitting..." : "Submit assessment"}
+                    </button>
+                  </div>
+                )}
+
+                {interviewPhase === "submitted" && (
+                  <div className="grid min-h-[60vh] place-items-center">
+                    <div className="w-full rounded-[28px] border border-white/75 bg-white/55 p-9 text-center shadow-[0_24px_60px_rgba(38,38,54,.13),inset_0_1px_0_rgba(255,255,255,.85)] backdrop-blur-2xl">
+                      <div className="mx-auto grid h-16 w-16 place-items-center rounded-full border border-white/75 bg-white/70 shadow-[0_10px_30px_rgba(38,38,54,.10)]">
+                        <CheckCircle2 className="h-8 w-8 text-[#3a8f63]" />
+                      </div>
+                      <p className="mt-6 text-[11px] font-bold uppercase tracking-[0.18em] text-[#6e6e78]">
+                        Complete
+                      </p>
+                      <h1 className="mt-3 text-[32px] font-extrabold leading-tight tracking-[-0.035em] text-[#17171c]">
+                        Scenario complete
+                      </h1>
+                      <p className="mt-3 text-[15px] font-medium leading-7 text-[#3a3a42]">
+                        Assessment submitted — your question path and next step
+                        have been recorded.
+                      </p>
+                      <div className="mt-6 rounded-[18px] border border-black/10 bg-white/40 p-5 text-left">
+                        <div className="grid grid-cols-[120px_1fr] gap-3 py-1.5 text-sm leading-6">
+                          <span className="font-semibold text-[#a6a6b0]">
+                            Questions asked
+                          </span>
+                          <span className="font-medium text-[#3a3a42]">
+                            {candidateQuestionCount} of {scenario.maxQuestions}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-[120px_1fr] gap-3 py-1.5 text-sm leading-6">
+                          <span className="font-semibold text-[#a6a6b0]">
+                            Your next step
+                          </span>
+                          <span className="font-medium text-[#3a3a42]">
+                            {finalRecommendation}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        ) : (
+          <>
+        {showTaskDrop && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#2b2540]/35 px-4 backdrop-blur-sm">
+            <div className="max-h-[calc(100vh-2rem)] w-full max-w-[560px] overflow-y-auto rounded-[22px] bg-white p-6 shadow-[0_18px_45px_rgba(76,55,160,.22)]">
+              <div className="text-center">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-[#7c5cfc]">
+                  Daily Challenge
+                </p>
+                <h2 className="mt-1 text-3xl font-black tracking-[-0.03em] text-[#2b2540]">
+                  A new task arrived
+                </h2>
+                <p className="mt-1 text-sm font-semibold text-[#8a83a6]">
+                  Read what {scenario.persona.name} sent, then start investigating.
+                </p>
+              </div>
+
+              <div className="relative my-5 flex justify-center">
+                <div className="absolute h-44 w-44 rounded-full bg-[#7c5cfc]/15 blur-2xl" />
+                <div className="relative flex h-32 w-44 items-center justify-center rounded-2xl border-2 border-[#eadffb] bg-gradient-to-br from-white to-[#f3efff] shadow-[0_16px_22px_rgba(76,55,160,.22)]">
+                  <div className="absolute inset-x-0 bottom-0 h-16 rounded-b-2xl bg-gradient-to-br from-[#f0e9ff] to-[#e7defb]" />
+                  <div className="absolute left-0 right-0 top-0 h-20 rounded-t-2xl bg-gradient-to-br from-[#7c5cfc] to-[#6a4af0] [clip-path:polygon(0_0,100%_0,50%_92%)]" />
+                  <div className="relative z-10 rounded-full bg-[#ffc93c] px-3 py-2 text-sm font-black text-[#7a4d00] shadow">
+                    QA
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-[#efeafa] bg-[#faf8ff] p-4">
+                <div className="mb-3 flex items-center gap-3">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#8a6bff] to-[#5b3fe0] text-base font-black text-white">
+                    {scenario.persona.name.slice(0, 1).toUpperCase()}
+                  </span>
+                  <div>
+                    <p className="text-base font-black text-[#2b2540]">
+                      {scenario.persona.name}
+                    </p>
+                    <p className="text-sm font-semibold text-[#8a83a6]">
+                      {scenario.persona.role}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-[15px] font-semibold leading-7 text-[#5a5470]">
+                  {visibleBrief}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={openGreeting}
+                className="mt-5 w-full rounded-2xl bg-[#7c5cfc] px-5 py-4 text-base font-black uppercase tracking-wide text-white shadow-[0_5px_0_#5b3fe0] transition active:translate-y-1 active:shadow-[0_1px_0_#5b3fe0]"
+              >
+                Meet {scenario.persona.name} →
+              </button>
+            </div>
+          </div>
+        )}
+        {showGreeting && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#2b2540]/35 px-4 backdrop-blur-sm">
+            <div className="max-h-[calc(100vh-2rem)] w-full max-w-[560px] overflow-y-auto rounded-[22px] bg-white p-6 shadow-[0_18px_45px_rgba(76,55,160,.22)]">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#7c5cfc]">
+                Your Manager
+              </p>
+              <h2 className="mt-1 text-2xl font-black tracking-[-0.03em] text-[#2b2540]">
+                Say hi to {scenario.persona.name}
+              </h2>
+              <div className="mt-5 space-y-3">
+                {greetingLines.map((line) => (
+                  <div key={line} className="flex items-end gap-3">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#8a6bff] to-[#5b3fe0] text-base font-black text-white">
+                      {scenario.persona.name.slice(0, 1).toUpperCase()}
+                    </span>
+                    <div className="rounded-[18px] rounded-bl-md bg-[#f4f1ff] px-4 py-3 text-[15px] font-bold leading-relaxed text-[#2b2540] shadow-sm">
+                      {line}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={enterWorkspace}
+                className="mt-6 w-full rounded-2xl bg-[#7c5cfc] px-5 py-4 text-base font-black uppercase tracking-wide text-white shadow-[0_5px_0_#5b3fe0] transition active:translate-y-1 active:shadow-[0_1px_0_#5b3fe0]"
+              >
+                I'm ready →
+              </button>
+            </div>
+          </div>
+        )}
+        <aside
+          className={
+            devMode
+              ? "flex max-h-[calc(100vh-2rem)] min-h-0 flex-col border-b border-slate-800 bg-slate-950/50 lg:border-b-0 lg:border-r"
+              : "flex max-h-[38%] min-h-0 flex-col border-b border-[#efeafa] bg-white"
+          }
+        >
+          <div
+            className={
+              devMode
+                ? "border-b border-slate-800 px-5 py-5 text-center"
+                : "border-b border-[#efeafa] px-6 py-4"
+            }
+          >
+            <p
+              className={
+                devMode
+                  ? "text-xs font-bold uppercase tracking-[0.18em] text-emerald-300"
+                  : "text-xs font-black uppercase tracking-[0.18em] text-[#7c5cfc]"
+              }
+            >
+              Workplace Task
             </p>
-            <h2 className="mt-2 text-2xl font-semibold leading-tight text-slate-50">
+            <h2
+              className={
+                devMode
+                  ? "mt-2 text-2xl font-semibold leading-tight text-slate-50"
+                  : "mt-1 text-xl font-black leading-tight tracking-[-0.03em] text-[#2b2540]"
+              }
+            >
               {scenario.title}
             </h2>
-            <div className="mx-auto mt-4 w-28 rounded-lg border border-emerald-300/30 bg-emerald-300/10 px-4 py-3">
+            {devMode ? (
+              <div className="mx-auto mt-4 w-28 rounded-lg border border-emerald-300/30 bg-emerald-300/10 px-4 py-3">
               <div className="text-4xl font-black leading-none text-emerald-200">
                 {questionsLeft}
               </div>
@@ -981,9 +1960,21 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
                 questions left
               </div>
             </div>
+            ) : (
+              <p className="mt-1 text-sm font-semibold leading-relaxed text-[#8a83a6]">
+                Read the task, talk to {scenario.persona.name}, then decide the
+                next immediate step.
+              </p>
+            )}
           </div>
 
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5">
+          <div
+            className={
+              devMode
+                ? "min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5"
+                : "min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4"
+            }
+          >
           {assessmentLoadError ? (
             <div className="rounded-lg border border-red-300/30 bg-red-300/10 p-4">
               <h3 className="mb-2 text-sm font-bold text-red-200">
@@ -995,27 +1986,71 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
             </div>
           ) : (
             <>
-              <div className="space-y-3 p-4">
+              <div className={devMode ? "space-y-3 p-4" : "space-y-4"}>
                 {/* Situation */}
-                <div className="rounded-lg border border-slate-700/80 bg-background p-4">
-                  <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
+                <div
+                  className={
+                    devMode
+                      ? "rounded-lg border border-slate-700/80 bg-background p-4"
+                      : "rounded-[18px] border border-[#eadffb] bg-[#faf8ff] p-5"
+                  }
+                >
+                  <p
+                    className={
+                      devMode
+                        ? "mb-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500"
+                        : "mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-[#7c5cfc]"
+                    }
+                  >
+                    {!devMode && <ClipboardList className="h-4 w-4" />}
                     Situation
                   </p>
-                  <p className="whitespace-pre-wrap text-sm leading-7 text-slate-100">
-                    {scenario.candidatePrompt}
+                  <p
+                    className={
+                      devMode
+                        ? "whitespace-pre-wrap text-sm leading-7 text-slate-100"
+                        : "whitespace-pre-wrap text-[15px] font-semibold leading-7 text-[#5a5470]"
+                    }
+                  >
+                    {devMode ? scenario.candidatePrompt : visibleBrief}
                   </p>
                 </div>
 
                 {/* Tasks */}
                 {scenario.todos && scenario.todos.length > 0 && (
-                  <div className="rounded-lg border border-slate-700/80 bg-background p-4">
-                    <p className="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
+                  <div
+                    className={
+                      devMode
+                        ? "rounded-lg border border-slate-700/80 bg-background p-4"
+                        : "rounded-[18px] border border-[#eadffb] bg-white p-5"
+                    }
+                  >
+                    <p
+                      className={
+                        devMode
+                          ? "mb-3 text-xs font-bold uppercase tracking-[0.16em] text-slate-500"
+                          : "mb-3 text-xs font-black uppercase tracking-[0.18em] text-[#7c5cfc]"
+                      }
+                    >
                       Your Tasks
                     </p>
                     <ol className="space-y-2.5">
                       {scenario.todos.map((todo, i) => (
-                        <li key={i} className="flex gap-3 text-sm text-slate-100">
-                          <span className="mt-0.5 shrink-0 font-mono text-xs font-semibold text-accent">
+                        <li
+                          key={i}
+                          className={
+                            devMode
+                              ? "flex gap-3 text-sm text-slate-100"
+                              : "flex gap-3 text-sm font-semibold leading-6 text-[#5a5470]"
+                          }
+                        >
+                          <span
+                            className={
+                              devMode
+                                ? "mt-0.5 shrink-0 font-mono text-xs font-semibold text-accent"
+                                : "mt-0.5 shrink-0 font-mono text-xs font-black text-[#7c5cfc]"
+                            }
+                          >
                             {String(i + 1).padStart(2, "0")}
                           </span>
                           <span className="leading-6">{todo}</span>
@@ -1027,18 +2062,51 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
 
                 {/* Scope */}
                 {(scenario.scope?.focus?.length || scenario.scope?.skip?.length) ? (
-                  <div className="rounded-lg border border-slate-700/80 bg-background p-4">
-                    <p className="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
+                  <div
+                    className={
+                      devMode
+                        ? "rounded-lg border border-slate-700/80 bg-background p-4"
+                        : "rounded-[18px] border border-[#eadffb] bg-white p-5"
+                    }
+                  >
+                    <p
+                      className={
+                        devMode
+                          ? "mb-3 text-xs font-bold uppercase tracking-[0.16em] text-slate-500"
+                          : "mb-3 text-xs font-black uppercase tracking-[0.18em] text-[#7c5cfc]"
+                      }
+                    >
                       Scope
                     </p>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className={devMode ? "grid grid-cols-2 gap-4" : "grid gap-4 sm:grid-cols-2"}>
                       {scenario.scope?.focus && scenario.scope.focus.length > 0 && (
                         <div>
-                          <p className="mb-1.5 text-xs font-medium text-slate-400">Focus on</p>
+                          <p
+                            className={
+                              devMode
+                                ? "mb-1.5 text-xs font-medium text-slate-400"
+                                : "mb-2 text-xs font-black uppercase tracking-wide text-[#8a83a6]"
+                            }
+                          >
+                            Focus on
+                          </p>
                           <ul className="space-y-1.5">
                             {scenario.scope.focus.map((f) => (
-                              <li key={f} className="flex items-start gap-2 text-xs text-slate-300">
-                                <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-accent" />
+                              <li
+                                key={f}
+                                className={
+                                  devMode
+                                    ? "flex items-start gap-2 text-xs text-slate-300"
+                                    : "flex items-start gap-2 text-xs font-semibold leading-5 text-[#5a5470]"
+                                }
+                              >
+                                <span
+                                  className={
+                                    devMode
+                                      ? "mt-1.5 h-1 w-1 shrink-0 rounded-full bg-accent"
+                                      : "mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#7c5cfc]"
+                                  }
+                                />
                                 {f}
                               </li>
                             ))}
@@ -1047,11 +2115,32 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
                       )}
                       {scenario.scope?.skip && scenario.scope.skip.length > 0 && (
                         <div>
-                          <p className="mb-1.5 text-xs font-medium text-slate-500">Skip</p>
+                          <p
+                            className={
+                              devMode
+                                ? "mb-1.5 text-xs font-medium text-slate-500"
+                                : "mb-2 text-xs font-black uppercase tracking-wide text-[#8a83a6]"
+                            }
+                          >
+                            Skip
+                          </p>
                           <ul className="space-y-1.5">
                             {scenario.scope.skip.map((s) => (
-                              <li key={s} className="flex items-start gap-2 text-xs text-slate-500">
-                                <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-slate-600" />
+                              <li
+                                key={s}
+                                className={
+                                  devMode
+                                    ? "flex items-start gap-2 text-xs text-slate-500"
+                                    : "flex items-start gap-2 text-xs font-semibold leading-5 text-[#8a83a6]"
+                                }
+                              >
+                                <span
+                                  className={
+                                    devMode
+                                      ? "mt-1.5 h-1 w-1 shrink-0 rounded-full bg-slate-600"
+                                      : "mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#d8cff5]"
+                                  }
+                                />
                                 {s}
                               </li>
                             ))}
@@ -1062,29 +2151,63 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
                   </div>
                 ) : null}
               </div>
-              <div className="rounded-lg border border-slate-800 bg-background/70 p-4">
-                <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
-                  Manager
+              <div
+                className={
+                  devMode
+                    ? "rounded-lg border border-slate-800 bg-background/70 p-4"
+                    : "rounded-[18px] border border-[#eadffb] bg-[#faf8ff] p-5"
+                }
+              >
+                <p
+                  className={
+                    devMode
+                      ? "text-xs font-bold uppercase tracking-[0.16em] text-slate-500"
+                      : "text-xs font-black uppercase tracking-[0.18em] text-[#7c5cfc]"
+                  }
+                >
+                  Meet the Manager
                 </p>
                 <div className="mt-3 flex items-start gap-3">
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-emerald-300/30 bg-emerald-300/10 text-base font-black text-emerald-200">
+                  <span
+                    className={
+                      devMode
+                        ? "flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-emerald-300/30 bg-emerald-300/10 text-base font-black text-emerald-200"
+                        : "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#8a6bff] to-[#5b3fe0] text-base font-black text-white"
+                    }
+                  >
                     {scenario.persona.name.slice(0, 1).toUpperCase()}
                   </span>
                   <div className="min-w-0">
-                    <p className="font-semibold text-slate-100">
+                    <p
+                      className={
+                        devMode
+                          ? "font-semibold text-slate-100"
+                          : "font-black text-[#2b2540]"
+                      }
+                    >
                       {scenario.persona.name}
                     </p>
-                    <p className="text-sm text-slate-400">
+                    <p
+                      className={
+                        devMode ? "text-sm text-slate-400" : "text-sm font-semibold text-[#8a83a6]"
+                      }
+                    >
                       {scenario.persona.role}
                     </p>
                   </div>
                 </div>
-                <div className="mt-4 space-y-2 text-sm leading-relaxed text-slate-300">
+                <div
+                  className={
+                    devMode
+                      ? "mt-4 space-y-2 text-sm leading-relaxed text-slate-300"
+                      : "mt-4 space-y-2 text-sm font-semibold leading-6 text-[#5a5470]"
+                  }
+                >
                   <p>
                     I am your manager for this scenario. Ask me what you need to
-                    know before deciding what to do next.
+                    know before deciding your next step.
                   </p>
-                  <p className="text-slate-400">
+                  <p className={devMode ? "text-slate-400" : "text-[#8a83a6]"}>
                     Expect short answers. I will answer the question you ask,
                     not solve the whole task for you.
                   </p>
@@ -1095,35 +2218,90 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
           </div>
         </aside>
 
-        <div className="flex min-h-[calc(100vh-2rem)] min-w-0 flex-col">
-          <header className="flex items-center justify-between gap-3 border-b border-slate-800 bg-slate-950/70 px-5 py-4">
+        <div
+          className={
+            devMode
+              ? "flex min-h-[calc(100vh-2rem)] min-w-0 flex-col"
+              : "flex min-h-0 flex-1 flex-col bg-white"
+          }
+        >
+          <header
+            className={
+              devMode
+                ? "flex items-center justify-between gap-3 border-b border-slate-800 bg-slate-950/70 px-5 py-4"
+                : "flex items-center justify-between gap-3 border-b border-[#efeafa] bg-white px-6 py-4"
+            }
+          >
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
-                Chat
+              <p
+                className={
+                  devMode
+                    ? "text-xs font-bold uppercase tracking-[0.16em] text-slate-500"
+                    : "flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-[#7c5cfc]"
+                }
+              >
+                {!devMode && <MessageSquare className="h-4 w-4" />}
+                Investigate
               </p>
-              <h3 className="text-lg font-semibold text-slate-100">
-                Ask {scenario.persona.name} a question
+              <h3
+                className={
+                  devMode
+                    ? "text-lg font-semibold text-slate-100"
+                    : "text-2xl font-black tracking-[-0.03em] text-[#2b2540]"
+                }
+              >
+                Ask {scenario.persona.name}
               </h3>
             </div>
-            <div className="text-xs font-semibold text-slate-500">
-              {messages.length / 2} asked
+            <div
+              className={
+                devMode
+                  ? "text-xs font-semibold text-slate-500"
+                  : "rounded-full bg-[#f4f1ff] px-4 py-2 text-sm font-black text-[#2b2540]"
+              }
+            >
+              {candidateQuestionCount}/{scenario.maxQuestions} asked
             </div>
           </header>
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+          <div
+            className={
+              devMode
+                ? "min-h-0 flex-1 overflow-y-auto px-5 py-5"
+                : "min-h-0 flex-1 overflow-y-auto bg-[#fbf9ff] px-5 py-5"
+            }
+          >
             <div className="space-y-4">
             {messages.length === 0 && (
               <div className="flex justify-start">
-                <div className="max-w-[760px] rounded-2xl rounded-tl-sm border border-slate-700 bg-slate-800 px-4 py-3 text-sm leading-relaxed text-slate-100">
+                <div
+                  className={
+                    devMode
+                      ? "max-w-[760px] rounded-2xl rounded-tl-sm border border-slate-700 bg-slate-800 px-4 py-3 text-sm leading-relaxed text-slate-100"
+                      : "max-w-[82%] rounded-[18px] rounded-tl-md bg-[#f4f1ff] px-5 py-4 text-[15px] font-bold leading-7 text-[#2b2540] shadow-sm"
+                  }
+                >
                   <div className="mb-2 flex items-center gap-2">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-700 text-xs font-black text-slate-200">
+                    <span
+                      className={
+                        devMode
+                          ? "flex h-7 w-7 items-center justify-center rounded-full bg-slate-700 text-xs font-black text-slate-200"
+                          : "flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[#8a6bff] to-[#5b3fe0] text-xs font-black text-white"
+                      }
+                    >
                       {scenario.persona.name.slice(0, 1).toUpperCase()}
                     </span>
                     <div>
-                      <p className="text-xs font-black uppercase tracking-wide text-slate-300">
+                      <p
+                        className={
+                          devMode
+                            ? "text-xs font-black uppercase tracking-wide text-slate-300"
+                            : "text-xs font-black uppercase tracking-wide text-[#6d6585]"
+                        }
+                      >
                         {scenario.persona.name}
                       </p>
-                      <p className="text-xs text-slate-500">
+                      <p className={devMode ? "text-xs text-slate-500" : "text-xs font-semibold text-[#8a83a6]"}>
                         {scenario.persona.role}
                       </p>
                     </div>
@@ -1144,8 +2322,12 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
                 <div
                   className={`max-w-[82%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${
                     message.role === "candidate"
-                      ? "rounded-tr-sm bg-emerald-300 text-slate-950"
-                      : "rounded-tl-sm border border-slate-700 bg-slate-800 text-slate-100"
+                      ? devMode
+                        ? "rounded-tr-sm bg-emerald-300 text-slate-950"
+                        : "rounded-tr-sm bg-[#7c5cfc] font-semibold text-white"
+                      : devMode
+                        ? "rounded-tl-sm border border-slate-700 bg-slate-800 text-slate-100"
+                        : "rounded-tl-sm bg-[#f4f1ff] font-semibold text-[#2b2540]"
                   }`}
                 >
                   <p className="mb-1 text-[11px] font-black uppercase tracking-wide opacity-70">
@@ -1159,7 +2341,13 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
             ))}
             {loadingAnswer && (
               <div className="flex justify-start">
-                <div className="rounded-2xl rounded-tl-sm border border-slate-700 bg-slate-800 px-4 py-3 text-sm text-slate-400">
+                <div
+                  className={
+                    devMode
+                      ? "rounded-2xl rounded-tl-sm border border-slate-700 bg-slate-800 px-4 py-3 text-sm text-slate-400"
+                      : "rounded-2xl rounded-tl-sm bg-[#f4f1ff] px-4 py-3 text-sm font-bold text-[#8a83a6]"
+                  }
+                >
                   {scenario.persona.name} is replying...
                 </div>
               </div>
@@ -1167,21 +2355,43 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
             </div>
           </div>
 
-        <div className="border-t border-slate-800 bg-background px-4 pt-3 pb-0">
+        <div
+          className={
+            devMode
+              ? "border-t border-slate-800 bg-background px-4 pt-3 pb-0"
+              : "border-t border-[#efeafa] bg-white px-5 pb-0 pt-4"
+          }
+        >
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
-              <label className="text-sm font-semibold text-slate-200">
-                Ask me a question
+              <label
+                className={
+                  devMode
+                    ? "text-sm font-semibold text-slate-200"
+                    : "text-base font-black text-[#2b2540]"
+                }
+              >
+                Ask {scenario.persona.name} a question
               </label>
             </div>
-            <div className="flex items-center gap-1 rounded-full border border-slate-700 p-0.5">
+            <div
+              className={
+                devMode
+                  ? "flex items-center gap-1 rounded-full border border-slate-700 p-0.5"
+                  : "flex items-center gap-1 rounded-full border border-[#eadffb] p-0.5"
+              }
+            >
               <button
                 type="button"
                 onClick={() => { setVoiceMode(false); stopRecording(); }}
                 className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition-colors ${
                   !voiceMode
-                    ? "bg-emerald-300 text-slate-950"
-                    : "text-slate-400 hover:text-slate-200"
+                    ? devMode
+                      ? "bg-emerald-300 text-slate-950"
+                      : "bg-[#33c989] text-white"
+                    : devMode
+                      ? "text-slate-400 hover:text-slate-200"
+                      : "text-[#8a83a6] hover:text-[#2b2540]"
                 }`}
               >
                 <Keyboard className="h-3.5 w-3.5" />
@@ -1192,8 +2402,12 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
                 onClick={() => setVoiceMode(true)}
                 className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition-colors ${
                   voiceMode
-                    ? "bg-emerald-300 text-slate-950"
-                    : "text-slate-400 hover:text-slate-200"
+                    ? devMode
+                      ? "bg-emerald-300 text-slate-950"
+                      : "bg-[#33c989] text-white"
+                    : devMode
+                      ? "text-slate-400 hover:text-slate-200"
+                      : "text-[#8a83a6] hover:text-[#2b2540]"
                 }`}
               >
                 <Mic className="h-3.5 w-3.5" />
@@ -1206,23 +2420,36 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
         {!voiceMode ? (
           <form
             onSubmit={askManager}
-            className="border-t border-slate-800 bg-background p-4 pt-2"
+            className={
+              devMode
+                ? "border-t border-slate-800 bg-background p-4 pt-2"
+                : "bg-white px-5 pb-5 pt-1"
+            }
           >
             <div className="grid grid-cols-[1fr_auto] gap-2">
               <input
+                ref={questionInputRef}
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
                 disabled={
-                  assessmentUnavailable || questionsLeft <= 0 || loadingAnswer
+                  !canAskQuestions || loadingAnswer
                 }
                 placeholder="Example: who is affected, and what outcome matters most?"
-                className="rounded-md border border-slate-700 bg-surface px-3 py-3 text-sm outline-none focus:border-emerald-300 disabled:opacity-50"
+                className={
+                  devMode
+                    ? "rounded-md border border-slate-700 bg-surface px-3 py-3 text-sm outline-none focus:border-emerald-300 disabled:opacity-50"
+                    : "rounded-2xl border-2 border-[#7c5cfc] bg-white px-4 py-3 text-sm font-semibold text-[#2b2540] outline-none placeholder:text-[#c8c0df] disabled:opacity-50"
+                }
               />
               <button
                 disabled={
-                  assessmentUnavailable || questionsLeft <= 0 || loadingAnswer
+                  !canAskQuestions || loadingAnswer
                 }
-                className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-300 px-4 py-3 text-sm font-bold text-slate-950 disabled:opacity-50"
+                className={
+                  devMode
+                    ? "inline-flex items-center justify-center gap-2 rounded-md bg-emerald-300 px-4 py-3 text-sm font-bold text-slate-950 disabled:opacity-50"
+                    : "inline-flex items-center justify-center gap-2 rounded-2xl bg-[#7c5cfc] px-5 py-3 text-sm font-black text-white shadow-[0_4px_0_#5b3fe0] disabled:opacity-50 disabled:shadow-none"
+                }
               >
                 <Send className="h-4 w-4" />
                 {loadingAnswer ? "Asking..." : "Ask"}
@@ -1230,10 +2457,22 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
             </div>
           </form>
         ) : (
-          <div className="border-t border-slate-800 bg-background p-4 pt-2">
+          <div
+            className={
+              devMode
+                ? "border-t border-slate-800 bg-background p-4 pt-2"
+                : "bg-white px-5 pb-5 pt-1"
+            }
+          >
             <div className="flex flex-col items-center gap-3">
               {transcript && (
-                <p className="w-full rounded-md border border-slate-700 bg-surface px-3 py-2 text-sm leading-relaxed text-slate-200">
+                <p
+                  className={
+                    devMode
+                      ? "w-full rounded-md border border-slate-700 bg-surface px-3 py-2 text-sm leading-relaxed text-slate-200"
+                      : "w-full rounded-2xl border border-[#eadffb] bg-[#faf8ff] px-4 py-3 text-sm font-semibold leading-relaxed text-[#2b2540]"
+                  }
+                >
                   {transcript}
                 </p>
               )}
@@ -1242,9 +2481,13 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
                   type="button"
                   onClick={startRecording}
                   disabled={
-                    assessmentUnavailable || questionsLeft <= 0 || loadingAnswer
+                    !canAskQuestions || loadingAnswer
                   }
-                  className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-300 text-slate-950 shadow-lg transition-transform hover:scale-105 disabled:opacity-50"
+                  className={
+                    devMode
+                      ? "flex h-14 w-14 items-center justify-center rounded-full bg-emerald-300 text-slate-950 shadow-lg transition-transform hover:scale-105 disabled:opacity-50"
+                      : "flex h-14 w-14 items-center justify-center rounded-full bg-[#7c5cfc] text-white shadow-lg transition-transform hover:scale-105 disabled:opacity-50"
+                  }
                   title="Start recording"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6">
@@ -1264,7 +2507,7 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
                   </svg>
                 </button>
               )}
-              <p className="text-xs text-slate-500">
+              <p className={devMode ? "text-xs text-slate-500" : "text-xs font-semibold text-[#8a83a6]"}>
                 {loadingAnswer
                   ? "Sending..."
                   : isRecording
@@ -1275,26 +2518,59 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
           </div>
         )}
 
-        <div className="border-t border-slate-800 bg-slate-950/60 p-4">
+        <div
+          className={
+            devMode
+              ? "border-t border-slate-800 bg-slate-950/60 p-4"
+              : `border-t border-[#efeafa] bg-white p-5 ${
+                  interviewPhase === "next_step" || interviewPhase === "submitted"
+                    ? "block"
+                    : "hidden"
+                }`
+          }
+        >
           <div className="mb-2 flex items-center gap-2">
-            <CheckCircle2 className="h-4 w-4 text-emerald-300" />
-            <label className="text-sm font-semibold text-slate-200">
+            <CheckCircle2 className={devMode ? "h-4 w-4 text-emerald-300" : "h-4 w-4 text-[#33c989]"} />
+            <label
+              className={
+                devMode
+                  ? "text-sm font-semibold text-slate-200"
+                  : "text-base font-black text-[#2b2540]"
+              }
+            >
               Submit your next immediate step
             </label>
           </div>
-          <p className="mb-3 text-xs leading-relaxed text-slate-500">
+          <p className={devMode ? "mb-3 text-xs leading-relaxed text-slate-500" : "mb-3 text-sm font-semibold leading-relaxed text-[#8a83a6]"}>
             Do not write a full project plan. State the first action you would take based on the context you earned.
           </p>
           <textarea
             value={finalRecommendation}
             onChange={(event) => setFinalRecommendation(event.target.value)}
-            className="h-24 w-full resize-y rounded-md border border-slate-700 bg-surface p-3 text-sm leading-relaxed outline-none focus:border-emerald-300"
+            className={
+              devMode
+                ? "h-24 w-full resize-y rounded-md border border-slate-700 bg-surface p-3 text-sm leading-relaxed outline-none focus:border-emerald-300"
+                : "h-24 w-full resize-y rounded-2xl border-2 border-[#eadffb] bg-[#faf8ff] p-4 text-sm font-semibold leading-relaxed text-[#2b2540] outline-none focus:border-[#7c5cfc]"
+            }
             placeholder="My next step would be..."
           />
+          {!devMode && questionsLeft > 0 && interviewPhase === "next_step" && (
+            <button
+              type="button"
+              onClick={() => setInterviewPhase("workspace")}
+              className="mt-3 w-full rounded-2xl border border-[#eadffb] bg-white px-4 py-3 text-sm font-black text-[#7c5cfc]"
+            >
+              Ask another question
+            </button>
+          )}
           <button
             onClick={generateReport}
-            disabled={loadingEvaluation}
-            className="mt-3 w-full rounded-md bg-emerald-300 px-4 py-3 text-sm font-bold text-slate-950 disabled:opacity-50"
+            disabled={loadingEvaluation || !finalRecommendation.trim()}
+            className={
+              devMode
+                ? "mt-3 w-full rounded-md bg-emerald-300 px-4 py-3 text-sm font-bold text-slate-950 disabled:opacity-50"
+                : "mt-3 w-full rounded-2xl bg-[#7c5cfc] px-4 py-4 text-sm font-black uppercase tracking-wide text-white shadow-[0_4px_0_#5b3fe0] disabled:opacity-50 disabled:shadow-none"
+            }
           >
             {loadingEvaluation ? "Submitting..." : "Submit assessment"}
           </button>
@@ -1407,6 +2683,8 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
           </div>
         )}
         </div>
+          </>
+        )}
       </section>
 
       {devMode && (

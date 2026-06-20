@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
-import {
-  gatekeepQuestion,
-  generateManagerAnswer,
-} from "@/lib/questionArena/answerer";
+import { generateManagerAnswer } from "@/lib/questionArena/answerer";
+import { llmGatekeepQuestion } from "@/lib/questionArena/llmGatekeeper";
 import type { ScenarioConfig } from "@/lib/questionArena/types";
+import type { LlmGatekeeperResult } from "@/lib/questionArena/llmGatekeeper";
 
 export const runtime = "nodejs";
 
@@ -51,18 +50,27 @@ export async function POST(req: Request) {
     );
   }
 
-  const decision = gatekeepQuestion(question, scenario, unlockedFactIds || []);
-  const fallbackAnswer = generateManagerAnswer(scenario, decision);
   const baseURL = process.env.OPENAI_BASE_URL;
   const model = process.env.OPENAI_MODEL || "qwen2.5-32b";
   const apiKey = process.env.OPENAI_API_KEY || "dummy";
+
+  // Use LLM gatekeeper (falls back to deterministic if no endpoint)
+  const gatekeeperResult: LlmGatekeeperResult = await llmGatekeepQuestion(
+    question,
+    scenario,
+    unlockedFactIds || [],
+    { baseURL, apiKey, model }
+  );
+  const decision = gatekeeperResult.decision;
+  const fallbackAnswer = generateManagerAnswer(scenario, decision);
 
   if (!baseURL) {
     return NextResponse.json({
       decision,
       answer: fallbackAnswer,
       modelUsed: "mock",
-      warning: "OPENAI_BASE_URL is not set; used deterministic fallback.",
+      gatekeeperSource: gatekeeperResult.source,
+      warning: gatekeeperResult.warning || "OPENAI_BASE_URL is not set; used deterministic fallback.",
     });
   }
 
@@ -81,6 +89,7 @@ export async function POST(req: Request) {
       answer: fallbackAnswer,
       modelUsed: model,
       source: "guardrail",
+      gatekeeperSource: gatekeeperResult.source,
       warning:
         "No approved context was unlocked; skipped model generation to avoid invented details.",
     });
@@ -101,12 +110,22 @@ export async function POST(req: Request) {
           content: JSON.stringify(
             {
               managerPersona: scenario.persona,
+              scenarioContext: {
+                title: scenario.title,
+                candidatePrompt: scenario.candidatePrompt,
+                todos: scenario.todos,
+                scope: scenario.scope,
+              },
               candidateQuestion: question,
               gatekeeperDecision: decision,
               approvedContextOnly: context,
+              critiqueEvidence: scenario.critique?.criteria?.map((c) => ({
+                evidence: c.evidence,
+                tags: c.tags,
+              })),
               fallbackAnswer,
               instruction:
-                "Write the manager's answer in 1-3 concise sentences. Use only approvedContextOnly and the fallbackAnswer. If no hidden or ambient facts were approved, do not invent details.",
+                "Write the manager's answer in 1-3 concise sentences. Use approvedContextOnly, the scenario context, and critique evidence to give a grounded, natural answer. If no hidden or ambient facts were approved, do not invent details.",
             },
             null,
             2
@@ -123,6 +142,7 @@ export async function POST(req: Request) {
       answer,
       modelUsed: model,
       source: "model",
+      gatekeeperSource: gatekeeperResult.source,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
@@ -131,6 +151,7 @@ export async function POST(req: Request) {
       answer: fallbackAnswer,
       modelUsed: "mock",
       source: "fallback",
+      gatekeeperSource: gatekeeperResult.source,
       warning: `Model call failed; used deterministic fallback. ${message}`,
     });
   }
