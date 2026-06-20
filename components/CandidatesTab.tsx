@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -446,11 +446,6 @@ function ApplicationRow({
 }) {
   const isOpen = sendModal === app;
   const [lastAssessmentUrl, setLastAssessmentUrl] = useState("");
-  const [origin, setOrigin] = useState("");
-
-  useEffect(() => {
-    setOrigin(window.location.origin);
-  }, []);
 
   // Scenarios for this job
   const relevantScenarios = savedScenarios.filter(
@@ -497,28 +492,11 @@ function ApplicationRow({
         />
       )}
 
-      {/* Generated assessment links */}
+      {/* Historical sent ids. These may predate the shareable-link store. */}
       {app.assessmentsSent.length > 0 && (
-        <div className="space-y-1.5">
+        <div className="space-y-0.5">
           {app.assessmentsSent.map((uuid) => (
-            <div key={uuid} className="flex items-center gap-2">
-              <input
-                readOnly
-                value={origin ? buildAssessmentUrl(origin, uuid) : uuid}
-                className="input h-8 flex-1 font-mono text-xs"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  if (origin) {
-                    navigator.clipboard.writeText(buildAssessmentUrl(origin, uuid));
-                  }
-                }}
-                className="btn-ghost h-8 shrink-0 px-2 text-xs"
-              >
-                Copy
-              </button>
-            </div>
+            <p key={uuid} className="font-mono text-xs text-slate-600">{uuid}</p>
           ))}
         </div>
       )}

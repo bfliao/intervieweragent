@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  assessmentStore,
+  getAssessment,
+  saveAssessment,
   type StoredAssessmentPackage,
 } from "@/lib/assessmentStore";
 
@@ -12,7 +13,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Missing assessment id." }, { status: 400 });
   }
 
-  const assessment = assessmentStore.get(id);
+  const assessment = getAssessment(id);
   if (!assessment) {
     return NextResponse.json(
       { error: `Assessment ${id} was not found.` },
@@ -43,8 +44,7 @@ export async function POST(req: NextRequest) {
     scenarios: payload.scenarios,
   };
 
-  assessmentStore.set(assessment.id, assessment);
+  saveAssessment(assessment);
 
   return NextResponse.json({ ok: true, assessment });
 }
-

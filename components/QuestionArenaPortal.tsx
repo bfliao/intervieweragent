@@ -98,6 +98,7 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
     null
   );
   const [status, setStatus] = useState("Ready.");
+  const [assessmentLoadError, setAssessmentLoadError] = useState("");
   const [report, setReport] = useState<ValidatorReport | null>(null);
   const [answerMode, setAnswerMode] = useState<"model" | "mock">("model");
   const [processingScenario, setProcessingScenario] = useState(false);
@@ -152,6 +153,7 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
   const layoutClassName = devMode
     ? "grid items-start grid-cols-[minmax(360px,0.9fr)_minmax(440px,1.2fr)_minmax(260px,0.7fr)] gap-4 max-[1180px]:grid-cols-1"
     : "mx-auto grid w-full max-w-5xl grid-cols-1 items-start";
+  const assessmentUnavailable = Boolean(assessmentLoadError);
 
   function resetRun(nextScenario = scenario) {
     setMessages([]);
@@ -239,6 +241,7 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
     loadedAssessmentRef.current = assessmentId;
 
     let canceled = false;
+    setAssessmentLoadError("");
 
     async function loadAssessment() {
       try {
@@ -251,9 +254,9 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
             `/api/assessments?id=${encodeURIComponent(id)}`
           );
           if (!res.ok) {
-            setStatus(
-              `Assessment ${id} was not found. Generate the link from the Candidates tab first.`
-            );
+            const message = `Assessment ${id} was not found. Generate a fresh link from the Candidates tab.`;
+            setAssessmentLoadError(message);
+            setStatus(message);
             return;
           }
 
@@ -272,6 +275,7 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
         setRawStoryline(markdown);
         setTargetRole(role);
         setDevMode(false);
+        setAssessmentLoadError("");
         setStatus(
           `Loaded assessment ${id}${
             stored.candidateName ? ` for ${stored.candidateName}` : ""
@@ -282,11 +286,12 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
           void processStorylineInput(markdown.trim(), role);
         }
       } catch (error) {
-        setStatus(
+        const message =
           error instanceof Error
             ? `Could not load assessment package: ${error.message}`
-            : "Could not load assessment package."
-        );
+            : "Could not load assessment package.";
+        setAssessmentLoadError(message);
+        setStatus(message);
       }
     }
 
@@ -759,14 +764,25 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
           </div>
         </header>
 
-        <div className="m-5 rounded-lg border border-slate-800 bg-background p-4">
-          <h3 className="mb-2 text-sm font-bold text-slate-300">
-            Problem Statement
-          </h3>
-          <p className="text-sm leading-relaxed text-slate-100">
-            {scenario.candidatePrompt}
-          </p>
-        </div>
+        {assessmentLoadError ? (
+          <div className="m-5 rounded-lg border border-red-300/30 bg-red-300/10 p-4">
+            <h3 className="mb-2 text-sm font-bold text-red-200">
+              Assessment link unavailable
+            </h3>
+            <p className="text-sm leading-relaxed text-red-100">
+              {assessmentLoadError}
+            </p>
+          </div>
+        ) : (
+          <div className="m-5 rounded-lg border border-slate-800 bg-background p-4">
+            <h3 className="mb-2 text-sm font-bold text-slate-300">
+              Problem Statement
+            </h3>
+            <p className="text-sm leading-relaxed text-slate-100">
+              {scenario.candidatePrompt}
+            </p>
+          </div>
+        )}
 
         <div className="flex-1 space-y-3 overflow-y-auto px-5 pb-5">
           {messages.length === 0 && (
@@ -840,12 +856,16 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
               <input
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
-                disabled={questionsLeft <= 0 || loadingAnswer}
+                disabled={
+                  assessmentUnavailable || questionsLeft <= 0 || loadingAnswer
+                }
                 placeholder="Ask one focused question..."
                 className="rounded-md border border-slate-700 bg-surface px-3 py-2 text-sm outline-none focus:border-emerald-300 disabled:opacity-50"
               />
               <button
-                disabled={questionsLeft <= 0 || loadingAnswer}
+                disabled={
+                  assessmentUnavailable || questionsLeft <= 0 || loadingAnswer
+                }
                 className="rounded-md bg-emerald-300 px-4 py-2 text-sm font-bold text-slate-950 disabled:opacity-50"
               >
                 {loadingAnswer ? "Asking..." : "Ask"}
@@ -864,7 +884,9 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
                 <button
                   type="button"
                   onClick={startRecording}
-                  disabled={questionsLeft <= 0 || loadingAnswer}
+                  disabled={
+                    assessmentUnavailable || questionsLeft <= 0 || loadingAnswer
+                  }
                   className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-300 text-slate-950 shadow-lg transition-transform hover:scale-105 disabled:opacity-50"
                   title="Start recording"
                 >

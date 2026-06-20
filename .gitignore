@@ -12,6 +12,8 @@
 .env
 .env.local
 .env*.local
+.assessment-store.json
+.assessment-store.json.tmp
 
 # misc
 .DS_Store
