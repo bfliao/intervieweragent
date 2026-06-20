@@ -2,12 +2,14 @@ import { NextResponse } from "next/server";
 import { generateScenario } from "@/scenario_generation/scenario";
 import { getIncident, randomIncident } from "@/scenario_generation/incidents";
 import type {
+  Difficulty,
   DesiredCoworker,
   Incident,
   PipelineInput,
 } from "@/scenario_generation/types";
 
 export const runtime = "nodejs";
+export const maxDuration = 120;
 
 function normalizeInput(body: unknown): PipelineInput {
   const b = (body ?? {}) as Record<string, unknown>;
@@ -34,7 +36,13 @@ function normalizeInput(body: unknown): PipelineInput {
         .filter((m) => m.description.trim().length > 0)
     : [];
 
-  return { jd, skillset, teamInput };
+  const difficultyRaw = b.difficulty;
+  const difficulty: Difficulty =
+    difficultyRaw === "junior" || difficultyRaw === "senior"
+      ? difficultyRaw
+      : "mid";
+
+  return { jd, skillset, teamInput, difficulty };
 }
 
 export async function POST(req: Request) {
@@ -47,38 +55,59 @@ export async function POST(req: Request) {
 
   const input = normalizeInput(body);
   if (!input.jd.trim()) {
-    return NextResponse.json(
-      { error: "`jd` is required." },
-      { status: 400 }
+    return NextResponse.json({ error: "`jd` is required." }, { status: 400 });
+  }
+
+  const b = body as {
+    incident?: unknown;
+    incidentId?: unknown;
+    incidents?: unknown;
+    count?: unknown;
+  };
+
+  const difficulty = input.difficulty ?? "mid";
+
+  // Resolve the incident(s) to generate from.
+  // Priority: incidents[] array > single incident object > incidentId > random
+  let incidentList: Incident[] = [];
+
+  if (Array.isArray(b.incidents) && b.incidents.length > 0) {
+    incidentList = (b.incidents as unknown[]).filter(
+      (i): i is Incident => !!i && typeof (i as Incident).title === "string"
     );
   }
 
-  // Ground on a real incident. Priority:
-  //   1. a full `incident` object (e.g. from the live JD crawl)
-  //   2. an `incidentId` from the local corpus
-  //   3. a random local incident
-  const b = body as { incident?: unknown; incidentId?: unknown };
-  const provided = b.incident as Incident | undefined;
-  const incident =
-    provided && typeof provided.title === "string"
-      ? provided
-      : typeof b.incidentId === "string"
-        ? await getIncident(b.incidentId)
-        : await randomIncident();
+  if (incidentList.length === 0) {
+    const provided = b.incident as Incident | undefined;
+    const single =
+      provided && typeof provided.title === "string"
+        ? provided
+        : typeof b.incidentId === "string"
+          ? await getIncident(b.incidentId)
+          : await randomIncident();
+    if (single) incidentList = [single];
+  }
 
-  if (!incident) {
+  if (incidentList.length === 0) {
     return NextResponse.json(
       {
         error:
-          "No incident to ground on. Provide an `incident` (from /api/crawl) or an `incidentId`.",
+          "No incident to ground on. Provide `incidents` (from /api/crawl), `incident`, or `incidentId`.",
       },
       { status: 400 }
     );
   }
 
+  // Honour `count` but cap at the number of available incidents (max 3)
+  const rawCount = typeof b.count === "number" ? b.count : 1;
+  const count = Math.min(Math.max(1, rawCount), 3, incidentList.length);
+  const targets = incidentList.slice(0, count);
+
   try {
-    const scenario = await generateScenario(input, incident);
-    return NextResponse.json({ scenario });
+    const scenarios = await Promise.all(
+      targets.map((incident) => generateScenario(input, incident, { difficulty }))
+    );
+    return NextResponse.json({ scenarios });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     const status = message.includes("OPENAI_API_KEY") ? 500 : 502;

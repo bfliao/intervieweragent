@@ -1,5 +1,7 @@
 // Shared types for the scenario -> critique -> rubric pipeline.
 
+export type Difficulty = "junior" | "mid" | "senior";
+
 export interface DesiredCoworker {
   memberId: string;
   memberName?: string;
@@ -12,6 +14,7 @@ export interface PipelineInput {
   skillset: string[];
   /** Each team member submits their own desired coworker. */
   teamInput: DesiredCoworker[];
+  difficulty?: Difficulty;
 }
 
 /** A real public postmortem, crawled into scenario_generation/data/incidents.json. */
@@ -27,12 +30,24 @@ export interface Incident {
   description: string;
 }
 
+export interface ScenarioScope {
+  /** Areas the candidate should spend time on. */
+  focus: string[];
+  /** Explicitly out of scope — candidate should not go deep here. */
+  skip: string[];
+}
+
 export interface Scenario {
   id: string;
   /** The ambiguous work scenario presented to the candidate. */
   brief: string;
-  /** What the scenario is designed to probe (high-level). */
+  /** Concrete candidate-facing tasks: what they are being asked to do. */
+  todos: string[];
+  /** What to focus on vs. skip — shown directly to the candidate. */
+  scope: ScenarioScope;
+  /** Internal labels for the hiring panel (not shown to candidate). */
   focusAreas: string[];
+  difficulty: Difficulty;
   /** Echo of the inputs this scenario was derived from. */
   derivedFrom: PipelineInput;
   /** The real incident this scenario was grounded on, if any. */

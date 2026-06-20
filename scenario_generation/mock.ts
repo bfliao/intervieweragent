@@ -27,8 +27,19 @@ export const MOCK_INPUT: PipelineInput = {
 
 export const MOCK_SCENARIO: Scenario = {
   id: "scn_mock_demo",
+  difficulty: "mid",
   brief:
     "It's 2pm on a Tuesday. Alerts fire: p99 latency on the product API has tripled in the last 20 minutes, and customers are complaining the site feels slow. CPU and disk on the app servers look normal. Cache hit rate dropped from 95% to 12% around the same time. A deploy went out this morning. You're on call. Walk us through how you'd diagnose and respond.",
+  todos: [
+    "Walk us through your diagnostic process step by step — what do you check first and why?",
+    "Identify the most likely root cause and explain the reasoning behind your hypothesis.",
+    "Describe the immediate mitigation you'd apply and how quickly you'd expect it to work.",
+    "Outline what you'd communicate to stakeholders and at what points during the incident.",
+  ],
+  scope: {
+    focus: ["diagnostic reasoning", "signal prioritization", "stakeholder communication"],
+    skip: ["writing actual code", "post-incident review", "capacity planning"],
+  },
   focusAreas: [
     "incident triage",
     "hypothesis prioritization",

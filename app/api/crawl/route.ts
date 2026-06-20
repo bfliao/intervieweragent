@@ -16,9 +16,16 @@ export async function POST(req: Request) {
   if (typeof jd !== "string" || !jd.trim()) {
     return NextResponse.json({ error: "`jd` is required." }, { status: 400 });
   }
+  const skillsRaw = (body as { skills?: unknown })?.skills;
+  const skills = typeof skillsRaw === "string" ? skillsRaw : "";
+  const excludeRaw = (body as { exclude?: unknown })?.exclude;
+  const exclude = typeof excludeRaw === "string" ? excludeRaw : "";
+  const difficultyRaw = (body as { difficulty?: unknown })?.difficulty;
+  const difficulty =
+    difficultyRaw === "junior" || difficultyRaw === "senior" ? difficultyRaw : "mid";
 
   try {
-    const result = await crawlIncidentsForJD(jd);
+    const result = await crawlIncidentsForJD(jd, { skills, exclude, difficulty });
     return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";

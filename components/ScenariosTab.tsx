@@ -163,6 +163,64 @@ function ScenarioRow({
             <p className="whitespace-pre-wrap text-sm text-slate-200 leading-relaxed">
               {saved.scenario.brief}
             </p>
+
+            {/* Candidate instructions */}
+            {(saved.scenario.todos?.length > 0 || saved.scenario.scope?.focus?.length > 0) && (
+              <div className="mt-3 rounded-lg border border-slate-700 bg-slate-900/60 p-4 space-y-4">
+                {saved.scenario.todos?.length > 0 && (
+                  <div>
+                    <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      Candidate tasks
+                    </h4>
+                    <ol className="space-y-1.5 list-none">
+                      {saved.scenario.todos.map((t, i) => (
+                        <li key={i} className="flex gap-2.5 text-sm text-slate-200">
+                          <span className="shrink-0 mt-0.5 font-mono text-xs text-accent">
+                            {String(i + 1).padStart(2, "0")}
+                          </span>
+                          {t}
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+                {(saved.scenario.scope?.focus?.length > 0 || saved.scenario.scope?.skip?.length > 0) && (
+                  <div className="flex gap-6">
+                    {saved.scenario.scope.focus.length > 0 && (
+                      <div className="flex-1">
+                        <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                          Focus on
+                        </h4>
+                        <ul className="space-y-1">
+                          {saved.scenario.scope.focus.map((f) => (
+                            <li key={f} className="flex items-center gap-1.5 text-xs text-slate-300">
+                              <span className="h-1 w-1 rounded-full bg-accent shrink-0" />
+                              {f}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {saved.scenario.scope.skip.length > 0 && (
+                      <div className="flex-1">
+                        <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                          Skip
+                        </h4>
+                        <ul className="space-y-1">
+                          {saved.scenario.scope.skip.map((s) => (
+                            <li key={s} className="flex items-center gap-1.5 text-xs text-slate-500">
+                              <span className="h-1 w-1 rounded-full bg-slate-600 shrink-0" />
+                              {s}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="mt-2 flex flex-wrap gap-1.5">
               {saved.scenario.focusAreas.map((f) => (
                 <Tag key={f}>{f}</Tag>

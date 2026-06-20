@@ -20,6 +20,7 @@ import type {
   Criterion,
   CritiqueOutput,
   DesiredCoworker,
+  Difficulty,
   Incident,
   SavedJob,
   SavedScenario,
@@ -56,6 +57,7 @@ export default function PipelineApp({
 
   // Job context
   const [skillset, setSkillset] = useState(MOCK_INPUT.skillset.join(", "));
+  const [exclude, setExclude] = useState("");
   const [members, setMembers] = useState<Member[]>(MOCK_INPUT.teamInput);
 
   // Crawl
@@ -64,17 +66,26 @@ export default function PipelineApp({
   const [plan, setPlan] = useState<CrawlPlan | null>(null);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [usedFallback, setUsedFallback] = useState(false);
+  const [qc, setQc] = useState<{ reviewed: number; approved: number; attempts: number } | null>(null);
   const [selectedId, setSelectedId] = useState<string>("");
   const [selectedJobId, setSelectedJobId] = useState<string>("");
   const [teamOpen, setTeamOpen] = useState(false);
   const [outputTab, setOutputTab] = useState<"scenario" | "rubric">("scenario");
   const [activeJobTitle, setActiveJobTitle] = useState<string>("");
 
+  // Generation options
+  const [difficulty, setDifficulty] = useState<Difficulty>("mid");
+  const [count, setCount] = useState(1);
+
   // Pipeline output
   const [loading, setLoading] = useState<null | "scenario" | "critique">(null);
   const [error, setError] = useState<string | null>(null);
-  const [scenario, setScenario] = useState<Scenario | null>(null);
+  const [scenarios, setScenarios] = useState<Scenario[]>([]);
+  const [selectedScenarioIdx, setSelectedScenarioIdx] = useState(0);
   const [critique, setCritique] = useState<CritiqueOutput | null>(null);
+
+  // Derived for convenience
+  const scenario = scenarios[selectedScenarioIdx] ?? null;
 
   useEffect(() => {
     if (!initialJob) return;
@@ -82,7 +93,8 @@ export default function PipelineApp({
     setJdDraft(initialJob.jd);
     if (initialJob.skills) setSkillset(initialJob.skills);
     setActiveJobTitle(initialJob.title);
-    setScenario(null);
+    setScenarios([]);
+    setSelectedScenarioIdx(0);
     setCritique(null);
     setIncidents([]);
     setPlan(null);
@@ -110,13 +122,18 @@ export default function PipelineApp({
       const res = await fetch("/api/crawl", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jd: jdValue }),
+        body: JSON.stringify({ jd: jdValue, skills: skillset, exclude, difficulty }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Crawl failed.");
       setPlan(data.plan || null);
       setIncidents(data.incidents || []);
       setUsedFallback(!!data.usedFallback);
+      setQc({
+        reviewed: data.reviewed ?? 0,
+        approved: data.approved ?? 0,
+        attempts: data.attempts ?? 0,
+      });
       setSelectedId(data.incidents?.[0]?.id || "");
     } catch (e) {
       setCrawlError(e instanceof Error ? e.message : "Unknown error");
@@ -130,7 +147,8 @@ export default function PipelineApp({
     if (!value) return;
     setJd(value);
     setGateDone(true);
-    setScenario(null);
+    setScenarios([]);
+    setSelectedScenarioIdx(0);
     setCritique(null);
     if (!useMock) runCrawl(value);
   }
@@ -151,21 +169,35 @@ export default function PipelineApp({
   async function generateScenario() {
     setError(null);
     setCritique(null);
+    setScenarios([]);
+    setSelectedScenarioIdx(0);
     if (useMock) {
-      setScenario(MOCK_SCENARIO);
+      setScenarios([MOCK_SCENARIO]);
       return;
     }
-    const incident = incidents.find((i) => i.id === selectedId);
+    // Pick up to `count` incidents starting from the selected one
+    const selectedIdx = incidents.findIndex((i) => i.id === selectedId);
+    const start = selectedIdx >= 0 ? selectedIdx : 0;
+    const targets = [
+      ...incidents.slice(start),
+      ...incidents.slice(0, start),
+    ].slice(0, count);
+    if (targets.length === 0) return;
     setLoading("scenario");
     try {
       const res = await fetch("/api/scenario", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...buildInput(), incident }),
+        body: JSON.stringify({
+          ...buildInput(),
+          difficulty,
+          incidents: targets,
+          count,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to generate scenario.");
-      setScenario(data.scenario);
+      setScenarios(data.scenarios ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
@@ -295,7 +327,8 @@ export default function PipelineApp({
               setJd(job.jd);
               setJdDraft(job.jd);
               if (job.skills) setSkillset(job.skills);
-              setScenario(null);
+              setScenarios([]);
+              setSelectedScenarioIdx(0);
               setCritique(null);
               setIncidents([]);
               setPlan(null);
@@ -333,6 +366,18 @@ export default function PipelineApp({
           />
         </Field>
 
+        <Field label="Exclude topics (comma separated)">
+          <input
+            value={exclude}
+            onChange={(e) => setExclude(e.target.value)}
+            className="input"
+            placeholder="ML, machine learning, frontend, ..."
+          />
+          <span className="text-xs text-slate-500">
+            Anything matching these is dropped before and during QC.
+          </span>
+        </Field>
+
         {/* Crawl results */}
         {!useMock && (
           <div className="space-y-2">
@@ -358,9 +403,16 @@ export default function PipelineApp({
             {crawlError && (
               <p className="text-xs text-red-400">{crawlError}</p>
             )}
+            {qc && !usedFallback && incidents.length > 0 && (
+              <p className="text-xs text-slate-500">
+                QC: reviewed {qc.reviewed}, kept {qc.approved} in scope
+                {qc.attempts > 1 ? ` · ${qc.attempts} crawl passes` : ""}
+              </p>
+            )}
             {usedFallback && incidents.length > 0 && (
               <p className="text-xs text-amber-400">
-                Web unreachable — showing closest matches from the local corpus.
+                No in-scope live results — showing closest matches from the local
+                corpus.
               </p>
             )}
 
@@ -458,6 +510,31 @@ export default function PipelineApp({
           ))}
         </div>
 
+        <div className="flex gap-3">
+          <Field label="Difficulty">
+            <select
+              value={difficulty}
+              onChange={(e) => setDifficulty(e.target.value as Difficulty)}
+              className="input"
+            >
+              <option value="junior">Junior</option>
+              <option value="mid">Mid-level</option>
+              <option value="senior">Senior</option>
+            </select>
+          </Field>
+          <Field label="Count">
+            <select
+              value={count}
+              onChange={(e) => setCount(Number(e.target.value))}
+              className="input"
+            >
+              <option value={1}>1 scenario</option>
+              <option value={2}>2 scenarios</option>
+              <option value={3}>3 scenarios</option>
+            </select>
+          </Field>
+        </div>
+
         <button
           onClick={generateScenario}
           disabled={loading !== null || crawling || (!useMock && !selected && !jd)}
@@ -539,6 +616,31 @@ export default function PipelineApp({
           </div>
         )}
 
+        {/* Scenario selector when count > 1 */}
+        {scenarios.length > 1 && (
+          <div className="flex gap-1 border-b border-slate-800 px-4 py-2">
+            {scenarios.map((s, i) => (
+              <button
+                key={s.id}
+                onClick={() => {
+                  setSelectedScenarioIdx(i);
+                  setCritique(null);
+                }}
+                className={`rounded px-3 py-1 text-xs font-medium transition-colors ${
+                  i === selectedScenarioIdx
+                    ? "bg-accent/20 text-accent"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                Scenario {i + 1}
+                <span className="ml-1.5 text-slate-600 capitalize">
+                  · {s.difficulty}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Scrollable content */}
         <div className="h-[520px] overflow-y-auto p-5">
           {outputTab === "scenario" ? (
@@ -558,7 +660,68 @@ export default function PipelineApp({
                 <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-200">
                   {scenario.brief}
                 </p>
-                <div className="flex flex-wrap gap-1.5">
+
+                {/* Candidate instructions */}
+                {(scenario.todos?.length > 0 || scenario.scope?.focus?.length > 0) && (
+                  <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-4 space-y-4">
+                    {scenario.todos?.length > 0 && (
+                      <div>
+                        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                          Your tasks
+                        </h4>
+                        <ol className="space-y-1.5 list-none">
+                          {scenario.todos.map((t, i) => (
+                            <li key={i} className="flex gap-2.5 text-sm text-slate-200">
+                              <span className="shrink-0 mt-0.5 font-mono text-xs text-accent">
+                                {String(i + 1).padStart(2, "0")}
+                              </span>
+                              {t}
+                            </li>
+                          ))}
+                        </ol>
+                      </div>
+                    )}
+                    {(scenario.scope?.focus?.length > 0 || scenario.scope?.skip?.length > 0) && (
+                      <div className="flex gap-6">
+                        {scenario.scope.focus.length > 0 && (
+                          <div className="flex-1">
+                            <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                              Focus on
+                            </h4>
+                            <ul className="space-y-1">
+                              {scenario.scope.focus.map((f) => (
+                                <li key={f} className="flex items-center gap-1.5 text-xs text-slate-300">
+                                  <span className="h-1 w-1 rounded-full bg-accent shrink-0" />
+                                  {f}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {scenario.scope.skip.length > 0 && (
+                          <div className="flex-1">
+                            <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                              Skip
+                            </h4>
+                            <ul className="space-y-1">
+                              {scenario.scope.skip.map((s) => (
+                                <li key={s} className="flex items-center gap-1.5 text-xs text-slate-500">
+                                  <span className="h-1 w-1 rounded-full bg-slate-600 shrink-0" />
+                                  {s}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="rounded-full border border-slate-600 bg-background px-2 py-0.5 text-xs font-medium capitalize text-slate-300">
+                    {scenario.difficulty}
+                  </span>
                   {scenario.focusAreas.map((f) => (
                     <Tag key={f}>{f}</Tag>
                   ))}
