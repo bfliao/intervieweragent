@@ -10,6 +10,8 @@ import {
   ExternalLink,
   Search,
   Pencil,
+  RefreshCw,
+  X,
 } from "lucide-react";
 import type {
   Criterion,
@@ -169,12 +171,23 @@ export default function PipelineApp() {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 p-4">
         <div className="w-full max-w-xl space-y-4 rounded-xl border border-slate-800 bg-surface p-6 shadow-2xl">
-          <div>
-            <h2 className="text-xl font-semibold">Start with a Job Description</h2>
-            <p className="mt-1 text-sm text-slate-400">
-              Paste the JD. We&apos;ll crawl the web for real, relevant incidents
-              to ground the evaluation scenario.
-            </p>
+          <div className="flex items-start justify-between">
+            <div>
+              <h2 className="text-xl font-semibold">Start with a Job Description</h2>
+              <p className="mt-1 text-sm text-slate-400">
+                Paste the JD. We&apos;ll crawl the web for real, relevant incidents
+                to ground the evaluation scenario.
+              </p>
+            </div>
+            {jd && (
+              <button
+                onClick={() => setGateDone(true)}
+                className="ml-4 text-slate-500 hover:text-slate-200"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            )}
           </div>
           <textarea
             autoFocus
@@ -194,18 +207,20 @@ export default function PipelineApp() {
             <FlaskConical className="h-3.5 w-3.5" />
             Use mock (no API key, skip crawl)
           </label>
-          <button
-            onClick={submitGate}
-            disabled={!jdDraft.trim()}
-            className="btn-primary w-full"
-          >
-            {useMock ? (
-              <Sparkles className="h-4 w-4" />
-            ) : (
-              <Search className="h-4 w-4" />
-            )}
-            {useMock ? "Start with demo" : "Crawl incidents for this JD"}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={submitGate}
+              disabled={!jdDraft.trim()}
+              className="btn-primary flex-1"
+            >
+              {useMock ? (
+                <Sparkles className="h-4 w-4" />
+              ) : (
+                <Search className="h-4 w-4" />
+              )}
+              {useMock ? "Start with demo" : "Crawl incidents for this JD"}
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -219,15 +234,26 @@ export default function PipelineApp() {
       <section className="space-y-4 rounded-xl border border-slate-800 bg-surface p-5">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-medium">Job context</h2>
-          <button
-            onClick={() => {
-              setJdDraft(jd);
-              setGateDone(false);
-            }}
-            className="btn-ghost"
-          >
-            <Pencil className="h-3.5 w-3.5" /> Edit JD / re-crawl
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setJdDraft(jd);
+                setGateDone(false);
+              }}
+              className="btn-ghost"
+            >
+              <Pencil className="h-3.5 w-3.5" /> Edit JD
+            </button>
+            {!useMock && (
+              <button
+                onClick={() => runCrawl(jd)}
+                disabled={crawling}
+                className="btn-ghost"
+              >
+                <RefreshCw className={`h-3.5 w-3.5${crawling ? " animate-spin" : ""}`} /> Re-crawl
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="rounded-lg border border-slate-800 bg-background p-3 text-xs text-slate-400">
