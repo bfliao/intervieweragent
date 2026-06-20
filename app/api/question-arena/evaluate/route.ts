@@ -43,8 +43,8 @@ function fallbackAssessment(
       deterministic.percent >= 75
         ? "The candidate uncovered most of the decision-critical context before recommending a direction."
         : deterministic.percent >= 45
-          ? "The candidate found some useful context but missed important constraints that would affect the next step."
-          : "The candidate did not earn enough context to choose a grounded next step.",
+          ? "The candidate found some useful context but missed important constraints that affect the assessment."
+          : "The candidate did not earn enough context to support a grounded assessment.",
     signalBreakdown: {
       questionQuality: {
         label:
@@ -75,11 +75,10 @@ function fallbackAssessment(
         evidence: askedQuestions.slice(0, 2).join(" | ") || "No questions.",
       },
       groundedNextStep: {
-        label: finalRecommendation ? "Submitted" : "Missing",
-        assessment: finalRecommendation
-          ? "A next step was submitted; compare it against earned and missed context."
-          : "No next immediate step was submitted.",
-        evidence: finalRecommendation || "No next immediate step.",
+        label: "Not scored",
+        assessment:
+          "Final action text is not required for this flow; use the question path and earned context instead.",
+        evidence: finalRecommendation || "No final action text collected.",
       },
     },
     strengths:
@@ -97,8 +96,8 @@ function fallbackAssessment(
         ? askedQuestions.slice(0, 3).map((question) => `Asked: ${question}`)
         : ["No candidate questions were recorded."],
     finalRecommendationAssessment: finalRecommendation
-      ? "Review the next immediate step against the earned context and missed facts shown above."
-      : "No next immediate step was submitted.",
+      ? "Review the submitted action text against the earned context and missed facts shown above."
+      : "No final action text was collected for this flow.",
     nextInterviewFocus:
       deterministic.missedFacts.length > 0
         ? deterministic.missedFacts

@@ -300,8 +300,8 @@
         "crit_k5025r6f",
         "crit_cshze8b7"
       ],
-      "summary": "Asked targeted DNS scoping questions and narrowed toward NXDOMAIN patterns, but did not produce a grounded next immediate step.",
-      "finalRecommendation": "No explicit next immediate step was submitted.",
+      "summary": "Asked targeted DNS scoping questions and narrowed toward NXDOMAIN patterns, but did not fully close the root-cause path.",
+      "finalRecommendation": "",
       "messages": [
         {
           "role": "manager",
@@ -347,7 +347,7 @@
         "crit_h54pbnma"
       ],
       "summary": "Built a strong hypothesis from DNS logs, validated it against server cohorts, separated mitigation from root-cause work, and named prevention checks.",
-      "finalRecommendation": "Shift traffic away from overloaded DNS servers, validate the suspect zone/config update against logs, roll back the bad configuration, then add validation and alerting for NXDOMAIN spikes.",
+      "finalRecommendation": "",
       "messages": [
         {
           "role": "candidate",
@@ -384,7 +384,7 @@
         "crit_5lz9ytn9"
       ],
       "summary": "Good incident posture and mitigation instincts, but root-cause validation stayed broad and the durable fix was underdeveloped.",
-      "finalRecommendation": "Fail over traffic from the overloaded DNS servers, communicate partial outage status, and add alerts for NXDOMAIN and CPU anomalies.",
+      "finalRecommendation": "",
       "messages": [
         {
           "role": "candidate",
@@ -412,7 +412,7 @@
         "crit_t0ffepb3"
       ],
       "summary": "Recognized NXDOMAIN as a useful signal but jumped toward generic caching and capacity ideas without validating the outage mechanism.",
-      "finalRecommendation": "Add Redis caching for DNS lookups and scale CPU capacity on the overloaded servers.",
+      "finalRecommendation": "",
       "messages": [
         {
           "role": "candidate",

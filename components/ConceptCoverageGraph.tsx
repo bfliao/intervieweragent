@@ -439,7 +439,7 @@ export function ConceptCoverageGraph({
           <>
             Reached the{" "}
             <span className="font-bold text-[#7BE8C8]">root cause</span> and
-            connected enough context for a grounded next step.
+            connected enough context for a grounded assessment.
           </>
         ) : trapLit ? (
           <>

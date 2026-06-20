@@ -286,8 +286,8 @@ function scenarioConfigFromAssessment(
         },
         {
           id: "next_step",
-          title: "Next immediate step",
-          fact: "The candidate should choose a high-signal next action under uncertainty.",
+          title: "Action under uncertainty",
+          fact: "The candidate should choose a high-signal action under uncertainty.",
           category: "ownership",
           weight: 1,
           knowledgeLevel: "direct" as const,
@@ -426,7 +426,7 @@ function downloadTraceJson(
 }
 
 function managerOpeningMessage() {
-  return "I'm here. Ask me what you need to know before deciding your next step.";
+  return "I'm here. Ask me what you need to know.";
 }
 
 function contextAreas(scenario: ScenarioConfig) {
@@ -466,7 +466,7 @@ function samGreetingLines(scenario: ScenarioConfig) {
   return [
     `I'm ${scenario.persona.name} — I'll be your ${scenario.persona.role.toLowerCase()} for this scenario.`,
     "Ask me focused questions to understand what's going on. I'll tell you what you ask, but I won't hand you the diagnosis.",
-    `You have ${scenario.maxQuestions} questions. When you're ready, you'll commit to your next immediate step.`,
+    `You have ${scenario.maxQuestions} questions. Submit when you're done asking.`,
     "Take your time. Let me know when you're ready.",
   ];
 }
@@ -605,7 +605,7 @@ function buildLocalConnectionLeakReport(
       label: deterministic.label,
       summary:
         deterministic.percent >= 75
-          ? `${localSignalLabel}: the candidate connected the production symptoms to a resource-lifecycle failure and had enough context to choose a grounded next step.`
+          ? `${localSignalLabel}: the candidate connected the production symptoms to a resource-lifecycle failure and built enough context for a grounded assessment.`
           : deterministic.percent >= 45
             ? `${localSignalLabel}: the candidate found part of the connection-leak story, but the report should still check whether they separated mitigation, fix, and prevention.`
             : `${localSignalLabel}: the candidate did not uncover enough of the connection lifecycle to confidently explain the incident or choose the right immediate action.`,
@@ -649,14 +649,14 @@ function buildLocalConnectionLeakReport(
             identifiedLeak && mitigatedIncident && preventionPlan
               ? "Grounded and complete"
               : identifiedLeak && mitigatedIncident
-                ? "Good immediate step"
+                ? "Good incident action"
                 : "Incomplete",
           assessment:
             identifiedLeak && mitigatedIncident && preventionPlan
-              ? "The next step covers incident mitigation, the likely cleanup bug, and prevention for future error-path leaks."
+              ? "The candidate covered incident mitigation, the likely cleanup bug, and prevention for future error-path leaks."
               : identifiedLeak && mitigatedIncident
-                ? "The next step handles the incident and likely bug; add explicit follow-up tests/alerts for prevention."
-                : "The next step should name the connection leak, stop new export traffic, and guarantee release in cleanup code.",
+                ? "The candidate handled the incident and likely bug; add explicit follow-up tests/alerts for prevention."
+                : "The assessment should name the connection leak, stop new export traffic, and guarantee release in cleanup code.",
           evidence: finalRecommendation,
         },
       },
@@ -674,7 +674,7 @@ function buildLocalConnectionLeakReport(
           .map((fact) => `Missed ${fact.title}: ${fact.whyItMatters}`),
         ...(!mitigatedIncident
           ? [
-              "Next step should explicitly stop new `/export` traffic before the code fix ships.",
+              "The assessment should explicitly show how the candidate would stop new `/export` traffic before the code fix ships.",
             ]
           : []),
         ...(!preventionPlan
@@ -689,8 +689,8 @@ function buildLocalConnectionLeakReport(
           : ["No candidate questions were recorded."],
       finalRecommendationAssessment:
         identifiedLeak && mitigatedIncident
-          ? "The submitted next step is demo-ready: it stabilizes production first and points to the connection cleanup bug."
-          : "The submitted next step needs to explicitly connect the incident to a leaked DB connection and stop `/export` traffic while the fix is prepared.",
+          ? "The submission is demo-ready: it stabilizes production first and points to the connection cleanup bug."
+          : "The submission needs to explicitly connect the incident to a leaked DB connection and stop `/export` traffic while the fix is prepared.",
       nextInterviewFocus:
         missedFacts.length > 0
           ? missedFacts
@@ -778,7 +778,6 @@ function ManagerEvaluationView({
   report,
   messages,
   unlockedFactIds,
-  finalRecommendation,
   candidateQuestionCount,
   candidateName,
 }: {
@@ -786,7 +785,6 @@ function ManagerEvaluationView({
   report: ValidatorReport;
   messages: Message[];
   unlockedFactIds: string[];
-  finalRecommendation: string;
   candidateQuestionCount: number;
   candidateName: string;
 }) {
@@ -801,13 +799,12 @@ function ManagerEvaluationView({
         report,
         messages,
         unlockedFactIds,
-        finalRecommendation,
+        finalRecommendation: "",
         questionCount: candidateQuestionCount,
       }),
     [
       candidateName,
       candidateQuestionCount,
-      finalRecommendation,
       messages,
       report,
       unlockedFactIds,
@@ -1009,7 +1006,6 @@ function ManagerEvaluationView({
                 ["Question quality", signalBreakdown.questionQuality],
                 ["Adaptive follow-up", signalBreakdown.adaptiveFollowUp],
                 ["Ownership posture", signalBreakdown.ownershipPosture],
-                ["Grounded next step", signalBreakdown.groundedNextStep],
               ].map(([title, signal]) => (
                 <div
                   key={title as string}
@@ -1057,15 +1053,6 @@ function ManagerEvaluationView({
                 </div>
               ))}
             </div>
-          </section>
-
-          <section className="rounded-[24px] border border-white/75 bg-white/65 p-5 shadow-[0_24px_60px_rgba(38,38,54,.13),inset_0_1px_0_rgba(255,255,255,.85)] backdrop-blur-2xl">
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#6e6e78]">
-              Next step submitted
-            </p>
-            <p className="mt-3 text-sm font-medium leading-6 text-[#3a3a42]">
-              {finalRecommendation}
-            </p>
           </section>
         </div>
       </section>
@@ -1186,12 +1173,10 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
   const ticketRows = useMemo(() => taskTicketRows(scenario), [scenario]);
   const progressIndex =
     interviewPhase === "submitted"
-      ? 3
-      : interviewPhase === "next_step"
-        ? 2
-        : interviewPhase === "workspace"
-          ? 1
-          : 0;
+      ? 2
+      : interviewPhase === "workspace"
+        ? 1
+        : 0;
   const pageClassName = devMode
     ? "min-h-screen p-4"
     : "min-h-screen overflow-x-hidden bg-[linear-gradient(155deg,#edecea_0%,#e7e8eb_55%,#e9e7e4_100%)] px-4 py-7 text-[#17171c]";
@@ -1234,8 +1219,8 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
   }
 
   function moveToNextStep() {
-    setInterviewPhase("next_step");
-    setStatus("Ready for next immediate step.");
+    setInterviewPhase("submitted");
+    setStatus("Submitting assessment.");
   }
 
   useEffect(() => {
@@ -1479,7 +1464,7 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
   }
 
   async function generateReport() {
-    const nextStep = finalRecommendation.trim() || "(not provided)";
+    const nextStep = "";
     if (assessmentUnavailable) {
       setStatus("Assessment link unavailable.");
       return;
@@ -1763,8 +1748,8 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
             managerReviewOpen ? "max-w-6xl" : "max-w-[600px]"
           }`}
         >
-          <div className="grid grid-cols-4 gap-2 rounded-[28px] border border-white/75 bg-white/55 px-5 py-3 shadow-[0_10px_30px_rgba(38,38,54,.10),inset_0_1px_0_rgba(255,255,255,.85)] backdrop-blur-2xl">
-            {["Brief", "Investigate", "Decide", "Done"].map((label, index) => (
+          <div className="grid grid-cols-3 gap-2 rounded-[28px] border border-white/75 bg-white/55 px-5 py-3 shadow-[0_10px_30px_rgba(38,38,54,.10),inset_0_1px_0_rgba(255,255,255,.85)] backdrop-blur-2xl">
+            {["Brief", "Investigate", "Done"].map((label, index) => (
               <div key={label}>
                 <div
                   className={`h-1 rounded-full transition ${
@@ -2238,7 +2223,7 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
                     <p className="mt-3 text-xs font-medium text-[#a6a6b0]">
                       {questionsLeft > 0
                         ? `${scenario.persona.name} answers what you ask — keep questions specific.`
-                        : "Out of questions — write your next immediate step."}
+                        : "Out of questions — submit your assessment."}
                     </p>
                     {questionsLeft <= 0 && (
                       <button
@@ -2247,7 +2232,7 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
                         onClick={generateReport}
                         className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[14px] bg-[#17171c] px-5 py-3.5 text-[15px] font-semibold text-white transition hover:-translate-y-0.5 hover:bg-black disabled:bg-black/10 disabled:text-black/30"
                       >
-                        {loadingEvaluation ? "Submitting..." : "Next step"}
+                        {loadingEvaluation ? "Submitting..." : "Submit assessment"}
                       </button>
                     )}
                   </div>
@@ -2260,7 +2245,6 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
                       report={report}
                       messages={messages}
                       unlockedFactIds={unlockedFactIds}
-                      finalRecommendation={finalRecommendation}
                       candidateQuestionCount={candidateQuestionCount}
                       candidateName={candidateName}
                     />
@@ -2282,7 +2266,7 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
                             scenario,
                             messages,
                             unlockedFactIds,
-                            finalRecommendation,
+                            "",
                             report
                           )
                         }
@@ -2427,8 +2411,8 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
             </div>
             ) : (
               <p className="mt-1 text-sm font-semibold leading-relaxed text-[#8a83a6]">
-                Read the task, talk to {scenario.persona.name}, then decide the
-                next immediate step.
+                Read the task, talk to {scenario.persona.name}, then submit
+                the assessment.
               </p>
             )}
           </div>
@@ -2670,7 +2654,7 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
                 >
                   <p>
                     I am your manager for this scenario. Ask me what you need to
-                    know before deciding your next step.
+                    know before submitting the assessment.
                   </p>
                   <p className={devMode ? "text-slate-400" : "text-[#8a83a6]"}>
                     Expect short answers. I will answer the question you ask,
@@ -3004,25 +2988,15 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
                   : "text-base font-black text-[#2b2540]"
               }
             >
-              Submit your next immediate step
+              Submit assessment
             </label>
           </div>
           <p className={devMode ? "mb-3 text-xs leading-relaxed text-slate-500" : "mb-3 text-sm font-semibold leading-relaxed text-[#8a83a6]"}>
-            Do not write a full project plan. State the first action you would take based on the context you earned.
+            Submit once the candidate has finished asking questions.
           </p>
-          <textarea
-            value={finalRecommendation}
-            onChange={(event) => setFinalRecommendation(event.target.value)}
-            className={
-              devMode
-                ? "h-24 w-full resize-y rounded-md border border-slate-700 bg-surface p-3 text-sm leading-relaxed outline-none focus:border-emerald-300"
-                : "h-24 w-full resize-y rounded-2xl border-2 border-[#eadffb] bg-[#faf8ff] p-4 text-sm font-semibold leading-relaxed text-[#2b2540] outline-none focus:border-[#7c5cfc]"
-            }
-            placeholder="My next step would be..."
-          />
           <button
             onClick={generateReport}
-            disabled={loadingEvaluation || !finalRecommendation.trim()}
+            disabled={loadingEvaluation}
             className={
               devMode
                 ? "mt-3 w-full rounded-md bg-emerald-300 px-4 py-3 text-sm font-bold text-slate-950 disabled:opacity-50"
@@ -3054,7 +3028,6 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
                   ["Question Quality", report.assessment.signalBreakdown.questionQuality],
                   ["Adaptive Follow-up", report.assessment.signalBreakdown.adaptiveFollowUp],
                   ["Ownership Posture", report.assessment.signalBreakdown.ownershipPosture],
-                  ["Grounded Next Step", report.assessment.signalBreakdown.groundedNextStep],
                 ].map(([title, signal]) => (
                   <div
                     key={title as string}
@@ -3107,12 +3080,6 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
               ))}
             </ul>
             <h4 className="mb-1 text-xs font-black uppercase tracking-wide text-slate-500">
-              Next Immediate Step
-            </h4>
-            <p className="mb-4 text-sm leading-relaxed text-slate-300">
-              {report.assessment.finalRecommendationAssessment}
-            </p>
-            <h4 className="mb-1 text-xs font-black uppercase tracking-wide text-slate-500">
               Missed Context
             </h4>
             <ul className="space-y-1 text-sm text-slate-300">
@@ -3144,7 +3111,7 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
                   scenario,
                   messages,
                   unlockedFactIds,
-                  finalRecommendation,
+                  "",
                   report
                 )
               }

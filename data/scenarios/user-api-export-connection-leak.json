@@ -2,7 +2,7 @@
   "id": "user_api_export_connection_leak",
   "title": "User API Export Connection Leak",
   "role": "Backend / Software Engineer — Junior",
-  "candidatePrompt": "It's Thursday at 2:15pm. A Slack alert fires: `user-api` error rate is at 11% and climbing. Your team's service handles user profile reads and writes for about 8,000 requests/minute. A new feature — \"Export my data as CSV\" — was deployed this morning at 9:40am. No other changes went out today. Signals: error rate 0% to 11%, p99 latency 85ms to 1,900ms, repeated `ER_CON_COUNT_ERROR: Too many connections`, MySQL pool 98/100 connections in use, service memory 280MB to 510MB and growing about 5MB/min since 10:30am, CPU normal at 18%, and `/export` gets about 40–60 requests/hour. You have 5 questions before stating your next immediate step.",
+  "candidatePrompt": "It's Thursday at 2:15pm. A Slack alert fires: `user-api` error rate is at 11% and climbing. Your team's service handles user profile reads and writes for about 8,000 requests/minute. A new feature — \"Export my data as CSV\" — was deployed this morning at 9:40am. No other changes went out today. Signals: error rate 0% to 11%, p99 latency 85ms to 1,900ms, repeated `ER_CON_COUNT_ERROR: Too many connections`, MySQL pool 98/100 connections in use, service memory 280MB to 510MB and growing about 5MB/min since 10:30am, CPU normal at 18%, and `/export` gets about 40–60 requests/hour. You have 5 questions before submitting the assessment.",
   "persona": {
     "name": "Sam",
     "role": "Engineering Manager",

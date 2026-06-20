@@ -140,7 +140,7 @@ export default function Home() {
         <header className="hr-appbar hr-glass">
           <div className="hr-wordmark">
             <span className="hr-mark" />
-            ByteCoder
+            Qssessment
           </div>
           <nav className="hr-tabs" aria-label="Dashboard sections">
             {(["jobs", "candidates", "scenarios"] as Tab[]).map((t) => (
