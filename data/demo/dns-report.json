@@ -1,0 +1,428 @@
+{
+  "scenario": {
+    "id": "scn_mqmt00u4_glg5ai",
+    "title": "GitHub DNS Outage",
+    "displayTitle": "DNS NXDOMAIN Outage",
+    "role": "Deep Learning Software Engineer, TensorRT Performance - New College Grad 2026",
+    "source": "Interview trace exported 2026-06-20",
+    "prompt": "On Wednesday, January 8, 2014, at 13:20 PM PST, DNS infrastructure experienced an outage. Customers reported full service downtime for 42 minutes, followed by 1 hour and 35 minutes of partial downtime affecting a subset of repositories. Symptoms included intermittent query timeouts, sporadic NXDOMAIN errors, increased load on some servers, high CPU usage on certain DNS servers, and elevated network latency."
+  },
+  "facts": [
+    {
+      "id": "crit_ht8lwkyt",
+      "title": "Reads NXDOMAIN signal",
+      "group": "Discovery",
+      "fact": "Examines DNS logs for patterns related to NXDOMAIN errors and forms a hypothesis."
+    },
+    {
+      "id": "crit_0ysahott",
+      "title": "Validates hypothesis",
+      "group": "Validation",
+      "fact": "Outlines validation steps without assuming the root cause."
+    },
+    {
+      "id": "crit_j6d6fcxp",
+      "title": "Reconciles server discrepancy",
+      "group": "Discovery",
+      "fact": "Compares authoritative and caching name server status during the outage period."
+    },
+    {
+      "id": "crit_k5025r6f",
+      "title": "Assesses load",
+      "group": "Mitigation",
+      "fact": "Assesses increased server load and suggests temporary mitigation without changing server configuration."
+    },
+    {
+      "id": "crit_kwovb12o",
+      "title": "Failover strategy",
+      "group": "Mitigation",
+      "fact": "Describes load balancing or failover as a temporary mitigation strategy."
+    },
+    {
+      "id": "crit_48ak7a2q",
+      "title": "Caching idea",
+      "group": "Mitigation",
+      "fact": "Suggests caching mechanisms to reduce DNS server load."
+    },
+    {
+      "id": "crit_7n1fx6t1",
+      "title": "Decouples DNS dependency",
+      "group": "Prevention",
+      "fact": "Decouples internal provisioning APIs from DNS dependencies."
+    },
+    {
+      "id": "crit_wj16mhf9",
+      "title": "Fallback lookup path",
+      "group": "Prevention",
+      "fact": "Outlines fallback mechanisms or local caching for DNS lookups."
+    },
+    {
+      "id": "crit_mqov9ekm",
+      "title": "Service discovery",
+      "group": "Prevention",
+      "fact": "Uses service discovery tooling to dynamically manage DNS dependencies."
+    },
+    {
+      "id": "crit_0s2w2cm3",
+      "title": "Stakeholder communication",
+      "group": "Communication",
+      "fact": "Communicates findings effectively to a non-technical stakeholder."
+    },
+    {
+      "id": "crit_tpc05oej",
+      "title": "Simplifies jargon",
+      "group": "Communication",
+      "fact": "Simplifies technical concepts with analogies."
+    },
+    {
+      "id": "crit_t0ffepb3",
+      "title": "Explains impact",
+      "group": "Communication",
+      "fact": "Focuses on customer impact and implications instead of only technical details."
+    },
+    {
+      "id": "crit_f366xtbw",
+      "title": "Handles red herrings",
+      "group": "Validation",
+      "fact": "Identifies and dismisses irrelevant signals in log data."
+    },
+    {
+      "id": "crit_ux75emzl",
+      "title": "Explains irrelevant signals",
+      "group": "Validation",
+      "fact": "Explains why certain signals are not relevant to the current issue."
+    },
+    {
+      "id": "crit_emunnmtj",
+      "title": "Filters evidence",
+      "group": "Validation",
+      "fact": "Uses filtering techniques to isolate relevant data points."
+    },
+    {
+      "id": "crit_m4bns6pe",
+      "title": "Traces root cause",
+      "group": "Validation",
+      "fact": "Traces symptoms back to the root cause of the DNS outage."
+    },
+    {
+      "id": "crit_cshze8b7",
+      "title": "Names config bug",
+      "group": "Validation",
+      "fact": "Identifies a specific configuration error or software bug as the root cause."
+    },
+    {
+      "id": "crit_3n81n7fa",
+      "title": "Explains symptom chain",
+      "group": "Validation",
+      "fact": "Explains how the root cause produced the observed symptoms."
+    },
+    {
+      "id": "crit_z066b2sc",
+      "title": "Proper fix",
+      "group": "Prevention",
+      "fact": "Proposes a durable fix to prevent similar outages."
+    },
+    {
+      "id": "crit_5lz9ytn9",
+      "title": "Monitoring and alerts",
+      "group": "Prevention",
+      "fact": "Adds automated monitoring and alerting for critical DNS metrics."
+    },
+    {
+      "id": "crit_q7afu1kk",
+      "title": "Audits updates",
+      "group": "Prevention",
+      "fact": "Audits risky DNS updates and configuration workflows."
+    },
+    {
+      "id": "crit_zzhs06nn",
+      "title": "Process prevention",
+      "group": "Prevention",
+      "fact": "Adds process safeguards to prevent recurrence."
+    },
+    {
+      "id": "crit_h54pbnma",
+      "title": "Testing and validation",
+      "group": "Prevention",
+      "fact": "Adds testing or validation for DNS configuration changes."
+    },
+    {
+      "id": "crit_8y2t50t0",
+      "title": "Documentation and training",
+      "group": "Prevention",
+      "fact": "Documents the failure mode and trains responders."
+    }
+  ],
+  "graph": {
+    "nodes": [
+      {
+        "id": "crit_ht8lwkyt",
+        "label": "NXDOMAIN signal",
+        "group": "Discovery",
+        "cluster": "discovery",
+        "x": 140,
+        "y": 135
+      },
+      {
+        "id": "crit_j6d6fcxp",
+        "label": "server mismatch",
+        "group": "Discovery",
+        "cluster": "discovery",
+        "x": 235,
+        "y": 205
+      },
+      {
+        "id": "crit_0ysahott",
+        "label": "validate hypothesis",
+        "group": "Validation",
+        "cluster": "validation",
+        "x": 340,
+        "y": 145
+      },
+      {
+        "id": "crit_m4bns6pe",
+        "label": "trace root cause",
+        "group": "Validation",
+        "cluster": "validation",
+        "x": 438,
+        "y": 210,
+        "root": true
+      },
+      {
+        "id": "crit_cshze8b7",
+        "label": "config bug",
+        "group": "Validation",
+        "cluster": "validation",
+        "x": 515,
+        "y": 135,
+        "root": true
+      },
+      {
+        "id": "crit_3n81n7fa",
+        "label": "symptom chain",
+        "group": "Validation",
+        "cluster": "validation",
+        "x": 545,
+        "y": 270
+      },
+      {
+        "id": "crit_k5025r6f",
+        "label": "load assessment",
+        "group": "Mitigation",
+        "cluster": "mitigation",
+        "x": 205,
+        "y": 315
+      },
+      {
+        "id": "crit_kwovb12o",
+        "label": "failover",
+        "group": "Mitigation",
+        "cluster": "mitigation",
+        "x": 300,
+        "y": 360
+      },
+      {
+        "id": "crit_48ak7a2q",
+        "label": "generic cache",
+        "group": "Mitigation",
+        "cluster": "mitigation",
+        "x": 115,
+        "y": 355,
+        "trap": true
+      },
+      {
+        "id": "crit_0s2w2cm3",
+        "label": "stakeholder update",
+        "group": "Communication",
+        "cluster": "communication",
+        "x": 620,
+        "y": 330
+      },
+      {
+        "id": "crit_t0ffepb3",
+        "label": "impact",
+        "group": "Communication",
+        "cluster": "communication",
+        "x": 690,
+        "y": 250
+      },
+      {
+        "id": "crit_z066b2sc",
+        "label": "durable fix",
+        "group": "Prevention",
+        "cluster": "prevention",
+        "x": 655,
+        "y": 145
+      },
+      {
+        "id": "crit_5lz9ytn9",
+        "label": "alerts",
+        "group": "Prevention",
+        "cluster": "prevention",
+        "x": 700,
+        "y": 90
+      },
+      {
+        "id": "crit_h54pbnma",
+        "label": "validation tests",
+        "group": "Prevention",
+        "cluster": "prevention",
+        "x": 620,
+        "y": 55
+      }
+    ],
+    "links": [
+      ["crit_ht8lwkyt", "crit_j6d6fcxp"],
+      ["crit_j6d6fcxp", "crit_0ysahott"],
+      ["crit_0ysahott", "crit_m4bns6pe"],
+      ["crit_m4bns6pe", "crit_cshze8b7"],
+      ["crit_cshze8b7", "crit_3n81n7fa"],
+      ["crit_j6d6fcxp", "crit_k5025r6f"],
+      ["crit_k5025r6f", "crit_kwovb12o"],
+      ["crit_48ak7a2q", "crit_k5025r6f"],
+      ["crit_m4bns6pe", "crit_z066b2sc"],
+      ["crit_z066b2sc", "crit_5lz9ytn9"],
+      ["crit_z066b2sc", "crit_h54pbnma"],
+      ["crit_0s2w2cm3", "crit_t0ffepb3"],
+      ["crit_k5025r6f", "crit_0s2w2cm3"]
+    ]
+  },
+  "runs": [
+    {
+      "id": "trace-run",
+      "candidateName": "Trace Candidate",
+      "profile": "New grad backend candidate. Curious and specific, but hesitant to commit to an action.",
+      "label": "Weak ambiguity reducer",
+      "percent": 15,
+      "unlockedFactIds": [
+        "crit_ht8lwkyt",
+        "crit_j6d6fcxp",
+        "crit_k5025r6f",
+        "crit_cshze8b7"
+      ],
+      "summary": "Asked targeted DNS scoping questions and narrowed toward NXDOMAIN patterns, but did not produce a grounded next immediate step.",
+      "finalRecommendation": "No explicit next immediate step was submitted.",
+      "messages": [
+        {
+          "role": "manager",
+          "content": "Go ahead - what would you like to know?"
+        },
+        {
+          "role": "candidate",
+          "content": "Were the NXDOMAIN responses concentrated on specific domains, zones, or record types, or were they broadly distributed across customer traffic?"
+        },
+        {
+          "role": "candidate",
+          "content": "Were the affected domains/zones hosted on all authoritative DNS servers, or only on the subset of servers exhibiting high CPU usage and latency?"
+        },
+        {
+          "role": "candidate",
+          "content": "What was different about the overloaded subset of authoritative DNS servers compared with the healthy ones?"
+        },
+        {
+          "role": "candidate",
+          "content": "Did the overloaded DNS servers generate a disproportionately large share of the NXDOMAIN responses, or were NXDOMAIN responses distributed evenly across both healthy and overloaded servers?"
+        }
+      ]
+    },
+    {
+      "id": "strong-run",
+      "candidateName": "Avery Chen",
+      "profile": "Systems-leaning candidate. Strong incident instincts and comfortable forming testable hypotheses.",
+      "label": "Strong ambiguity reducer",
+      "percent": 82,
+      "unlockedFactIds": [
+        "crit_ht8lwkyt",
+        "crit_0ysahott",
+        "crit_j6d6fcxp",
+        "crit_k5025r6f",
+        "crit_kwovb12o",
+        "crit_f366xtbw",
+        "crit_emunnmtj",
+        "crit_m4bns6pe",
+        "crit_cshze8b7",
+        "crit_3n81n7fa",
+        "crit_z066b2sc",
+        "crit_5lz9ytn9",
+        "crit_h54pbnma"
+      ],
+      "summary": "Built a strong hypothesis from DNS logs, validated it against server cohorts, separated mitigation from root-cause work, and named prevention checks.",
+      "finalRecommendation": "Shift traffic away from overloaded DNS servers, validate the suspect zone/config update against logs, roll back the bad configuration, then add validation and alerting for NXDOMAIN spikes.",
+      "messages": [
+        {
+          "role": "candidate",
+          "content": "Which zones produced the NXDOMAIN spike, and did the pattern line up with a config change before 13:20 PST?"
+        },
+        {
+          "role": "candidate",
+          "content": "Can we compare overloaded DNS servers with healthy servers by zone ownership, config version, and query mix?"
+        },
+        {
+          "role": "candidate",
+          "content": "Before changing config, can we temporarily fail traffic away from the hot servers and watch latency and NXDOMAIN rates?"
+        },
+        {
+          "role": "candidate",
+          "content": "What validation or canary would have caught this DNS config problem before it hit all customers?"
+        }
+      ]
+    },
+    {
+      "id": "mitigation-run",
+      "candidateName": "Mina Patel",
+      "profile": "Production-minded candidate. Prioritizes stabilization and stakeholder clarity.",
+      "label": "Developing ambiguity reducer",
+      "percent": 54,
+      "unlockedFactIds": [
+        "crit_ht8lwkyt",
+        "crit_j6d6fcxp",
+        "crit_k5025r6f",
+        "crit_kwovb12o",
+        "crit_wj16mhf9",
+        "crit_0s2w2cm3",
+        "crit_t0ffepb3",
+        "crit_5lz9ytn9"
+      ],
+      "summary": "Good incident posture and mitigation instincts, but root-cause validation stayed broad and the durable fix was underdeveloped.",
+      "finalRecommendation": "Fail over traffic from the overloaded DNS servers, communicate partial outage status, and add alerts for NXDOMAIN and CPU anomalies.",
+      "messages": [
+        {
+          "role": "candidate",
+          "content": "Which users are impacted right now, and can we reduce load by moving DNS traffic away from the overloaded subset?"
+        },
+        {
+          "role": "candidate",
+          "content": "Are NXDOMAIN and latency improving when we route around the overloaded servers?"
+        },
+        {
+          "role": "candidate",
+          "content": "What should we tell customer support while we investigate the DNS pattern?"
+        }
+      ]
+    },
+    {
+      "id": "weak-run",
+      "candidateName": "Noah Kim",
+      "profile": "General backend candidate. Notices surface signals but drifts toward generic fixes.",
+      "label": "Weak ambiguity reducer",
+      "percent": 21,
+      "unlockedFactIds": [
+        "crit_ht8lwkyt",
+        "crit_48ak7a2q",
+        "crit_t0ffepb3"
+      ],
+      "summary": "Recognized NXDOMAIN as a useful signal but jumped toward generic caching and capacity ideas without validating the outage mechanism.",
+      "finalRecommendation": "Add Redis caching for DNS lookups and scale CPU capacity on the overloaded servers.",
+      "messages": [
+        {
+          "role": "candidate",
+          "content": "Are NXDOMAIN errors the main thing in the logs?"
+        },
+        {
+          "role": "candidate",
+          "content": "Could we cache DNS responses in Redis or add more CPU to the overloaded servers?"
+        }
+      ]
+    }
+  ]
+}
