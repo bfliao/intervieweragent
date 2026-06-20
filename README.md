@@ -1,14 +1,25 @@
-# Interviewer Agent
+# Question Arena Demo Pipeline
 
-An AI-powered mock interviewer built with **Next.js 14**, **TypeScript**, **TailwindCSS**, and the **OpenAI API**. Pick a role and practice interviews with an agent that asks questions, adapts difficulty, and gives feedback.
+This branch combines the scenario-generation dashboard with the TeamB Question Arena candidate flow.
+
+The demo path is:
+
+1. Generate or save a scenario from the dashboard.
+2. Add/select a candidate.
+3. Click `Send assessment`.
+4. The app downloads the assessment markdown, stores the same assessment package in localStorage, and shows a candidate URL.
+5. Open the candidate URL: `/assessment?assessment=<uuid>`.
+6. The candidate view loads in dev mode off, compiles the scenario package into a Question Arena config, and starts the Q&A flow.
+
+This is intentionally localStorage-backed for the hackathon demo. In production, the UUID would resolve from a database.
+
+Question Arena is an internal testing portal for building ambiguity-based candidate assessments. The current MVP lets the team process a raw teammate storyline into a structured scenario config, edit the interview answer prompt, run a 5-question Q&A with a simulated HR/team/manager source, ask the candidate for a next immediate step, and inspect what hidden context the candidate earned.
 
 ## Tech Stack
 
 - Next.js 14 (App Router)
 - React 18 + TypeScript
 - TailwindCSS
-- OpenAI Chat Completions API
-- lucide-react icons
 
 ## Getting Started
 
@@ -18,47 +29,94 @@ An AI-powered mock interviewer built with **Next.js 14**, **TypeScript**, **Tail
    npm install
    ```
 
-2. Set up your environment variables:
-
-   ```bash
-   cp .env.example .env.local
-   ```
-
-   Then add your `OPENAI_API_KEY` to `.env.local`.
-
-3. Run the dev server:
+2. Run the dev server:
 
    ```bash
    npm run dev
    ```
 
-4. Open [http://localhost:3000](http://localhost:3000).
+3. Open [http://localhost:3000](http://localhost:3000).
+
+The app can run in two answer modes:
+
+- `Model endpoint`: calls an OpenAI-compatible endpoint through `/api/question-arena/answer`.
+- `Deterministic mock`: runs the local gatekeeper/persona fallback only.
+
+For the current hackathon endpoint, copy `.env.example` to `.env.local`:
+
+```bash
+cp .env.example .env.local
+```
+
+Current expected values:
+
+```bash
+OPENAI_API_KEY=dummy
+OPENAI_BASE_URL=https://c5b6-136-24-140-216.ngrok-free.app/v1
+OPENAI_MODEL=qwen2.5-32b
+```
+
+The current hackathon model endpoint is an OpenAI-compatible chat-completions endpoint. It does not fetch online by itself. If a scenario needs web context, add that context to the raw storyline first or build a server-side retrieval step that appends fetched evidence before calling the scenario processor.
+
+The storyline processor is a prep-time alignment layer. It can be slow. For the final demo, use a reviewed, saved ScenarioConfig rather than depending on live generation.
 
 ## Project Structure
 
-```
+```txt
 app/
-  api/chat/route.ts   # OpenAI interviewer endpoint
-  layout.tsx          # Root layout
-  page.tsx            # Home page
-  globals.css         # Tailwind styles
+  page.tsx                         # Testing portal page
 components/
-  Chat.tsx            # Chat UI + role selector
+  QuestionArenaPortal.tsx          # Scenario editor + Q&A runner
+data/
+  scenarios/                       # Scenario configs teammates can edit
+  manager-personas/                # Reusable manager archetypes
+prompts/
+  scenario-processor.md            # Raw storyline -> ScenarioConfig prompt
+  interview-answerer.md            # Manager/persona response prompt
+  gatekeeper.md                    # Hidden-fact unlock prompt draft
+  evaluator.md                     # Final validator/report prompt
+lib/
+  questionArena/
+    answerer.ts                    # Deterministic mock gatekeeper/persona
+    scenarios.ts                   # Scenario registry
+    types.ts                       # Scenario and scoring types
+testing-portal/
+  index.html                       # Static fallback prototype
+assets/
+  *.md                             # Product specs, decision logs, research notes
 ```
 
 ## How It Works
 
-The frontend in `components/Chat.tsx` sends the conversation and selected role
-to `POST /api/chat`. The route injects an interviewer system prompt and calls
-the OpenAI Chat Completions API, returning the assistant's reply.
+The current app uses a deterministic mock answerer:
 
-## Deploy
+1. Teammate writes a raw storyline or scenario markdown package in any reasonable format.
+2. `/api/question-arena/process-scenario` converts it into `ScenarioConfig` JSON using the scenario processor prompt and local persona archetypes.
+3. Candidate asks a question.
+4. The gatekeeper in `lib/questionArena/answerer.ts` decides what facts were earned.
+5. The manager persona answers using approved facts only.
+6. The candidate proposes a next immediate step, not a complete final solution.
+7. The report computes weighted information gain from unlocked hidden facts.
 
-Deploy to Vercel, set the `OPENAI_API_KEY` environment variable, and you're live.
+When `Model endpoint` is selected, the same deterministic gatekeeper still decides what facts were earned. The model only writes the manager response using approved facts, so scoring stays stable while the answer sounds more natural.
 
-## Next Ideas (for the hackathon)
+The final report uses `/api/question-arena/evaluate`. It keeps weighted information gain deterministic, then asks the model-backed validator to explain the candidate signal with question quality, adaptive follow-up, ownership posture, grounded next step, strengths, concerns, evidence, and next interview focus.
 
-- Stream responses for a typing effect
-- Add resume upload to tailor questions
-- Score answers and produce an end-of-interview report
-- Voice input/output for realistic mock interviews
+## Team Workflow
+
+- Scenario owners edit or add JSON files in `data/scenarios/`.
+- Storyline owners can paste raw notes or scenario markdown packages into the Storyline Processor, then review the generated ScenarioConfig before applying it. The raw input can be bullets, transcript notes, JSON, product tickets, bug reports, HR notes, initial observations, evidence/tag tables, critique notes, crawler output, or another rough draft format.
+- Prompt owners edit files in `prompts/`.
+- UI/runtime owners work in `components/QuestionArenaPortal.tsx` and `lib/questionArena/`.
+- Keep scenario config, answerer prompt, and scoring logic separate so teammates do not overwrite each other.
+
+## Current Scope
+
+- Editable scenario JSON
+- Raw storyline processor for manager persona + hidden-fact config generation
+- Editable interview answer prompt
+- 5-question Q&A runner
+- Debug panel for unlocked facts and gatekeeper decisions
+- Weighted information-gain report
+
+The original mock interviewer chat files are still in the repository, but the default home page now opens Question Arena.

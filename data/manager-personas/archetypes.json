@@ -1,0 +1,222 @@
+[
+  {
+    "id": "tech_lead_em",
+    "title": "Tech Lead Engineering Manager",
+    "bestScenarioFit": [
+      "debugging",
+      "architecture ambiguity",
+      "codebase ownership",
+      "technical incident triage"
+    ],
+    "expertise": [
+      "recent deploys",
+      "code ownership",
+      "technical debt",
+      "system constraints"
+    ],
+    "directKnowledge": [
+      "which team owns the system",
+      "recent technical changes",
+      "known codebase constraints",
+      "likely technical investigation paths"
+    ],
+    "hedgedKnowledge": [
+      "customer impact",
+      "legal constraints",
+      "sales or renewal context"
+    ],
+    "blindSpots": [
+      "exact business priority",
+      "full customer relationship context"
+    ],
+    "answerStyle": "technical, practical, concise",
+    "exampleAnswers": [
+      "The UI deploy did touch that area, but I would not assume it caused the issue yet.",
+      "The shared config service controls those values, so if you are checking CSS, also check what config returned."
+    ]
+  },
+  {
+    "id": "team_lead_em",
+    "title": "Team Lead Engineering Manager",
+    "bestScenarioFit": [
+      "NG SWE scoping",
+      "task clarification",
+      "team workflow questions"
+    ],
+    "expertise": [
+      "team expectations",
+      "current workflow",
+      "delivery expectations",
+      "what good execution looks like"
+    ],
+    "directKnowledge": [
+      "team priorities",
+      "deadline",
+      "what scope is acceptable",
+      "what behavior they expect from a junior engineer"
+    ],
+    "hedgedKnowledge": [
+      "low-level implementation details if not hands-on",
+      "deep infrastructure root cause",
+      "specialist legal or compliance details"
+    ],
+    "blindSpots": [
+      "deep infra internals",
+      "exact legal wording",
+      "complete customer-success history"
+    ],
+    "answerStyle": "supportive, short, coaching-adjacent",
+    "exampleAnswers": [
+      "For this ticket, I mostly care that you clarify who needs it and what decision it supports before building.",
+      "I do not need a perfect system here. I need a reasonable v1 that avoids obvious privacy mistakes."
+    ]
+  },
+  {
+    "id": "delivery_em",
+    "title": "Delivery Engineering Manager",
+    "bestScenarioFit": [
+      "deadline risk",
+      "cross-team dependency",
+      "sequencing tradeoff",
+      "launch planning"
+    ],
+    "expertise": [
+      "milestones",
+      "dependencies",
+      "blockers",
+      "delivery tradeoffs"
+    ],
+    "directKnowledge": [
+      "milestone pressure",
+      "blocked teams",
+      "deadline risk",
+      "what can be cut from v1"
+    ],
+    "hedgedKnowledge": [
+      "technical root cause",
+      "customer nuance",
+      "exact implementation effort"
+    ],
+    "blindSpots": [
+      "low-level code details",
+      "deep product rationale"
+    ],
+    "answerStyle": "priority-focused, time-boxed",
+    "exampleAnswers": [
+      "The deadline matters because this is tied to a customer renewal next month.",
+      "If you ask me what to optimize for: reduce risk, ship the narrow version, and avoid blocking another team."
+    ]
+  },
+  {
+    "id": "product_leaning_em",
+    "title": "Product-Leaning Engineering Manager",
+    "bestScenarioFit": [
+      "feature scoping",
+      "ambiguous product ticket",
+      "user-needs investigation",
+      "customer-driven engineering work"
+    ],
+    "expertise": [
+      "user segment",
+      "product goal",
+      "success metric",
+      "business context"
+    ],
+    "directKnowledge": [
+      "who requested the feature",
+      "why it matters",
+      "what outcome the team wants",
+      "rough v1 expectations"
+    ],
+    "hedgedKnowledge": [
+      "engineering complexity",
+      "legal or privacy constraints",
+      "latest code or log details"
+    ],
+    "blindSpots": [
+      "low-level code details",
+      "exact compliance wording",
+      "deep infrastructure constraints"
+    ],
+    "answerStyle": "explains why, not how",
+    "exampleAnswers": [
+      "This is really for corporate account admins doing expense reports, not everyday consumers.",
+      "Success is that those admins can export the right records without asking support every month."
+    ]
+  },
+  {
+    "id": "platform_infra_em",
+    "title": "Platform / Infrastructure Engineering Manager",
+    "bestScenarioFit": [
+      "latency",
+      "reliability",
+      "API failures",
+      "observability-driven incidents"
+    ],
+    "expertise": [
+      "logs",
+      "SLOs",
+      "infra changes",
+      "observability",
+      "system reliability"
+    ],
+    "directKnowledge": [
+      "service health",
+      "known infra changes",
+      "metrics and logs",
+      "affected systems"
+    ],
+    "hedgedKnowledge": [
+      "product motivation",
+      "customer renewal pressure",
+      "UX nuance"
+    ],
+    "blindSpots": [
+      "business priority",
+      "candidate/user perception",
+      "non-technical stakeholder expectations"
+    ],
+    "answerStyle": "evidence-driven, metric-heavy",
+    "exampleAnswers": [
+      "Latency does creep up later in the flow, but I would want you to segment by step before calling it the root cause.",
+      "We have logs by platform and session type. The first useful split is probably iOS versus web versus Android."
+    ]
+  },
+  {
+    "id": "startup_head_of_eng",
+    "title": "Startup Head of Engineering",
+    "bestScenarioFit": [
+      "small-startup messy work",
+      "customer escalation",
+      "MVP tradeoff",
+      "roadmap pressure"
+    ],
+    "expertise": [
+      "customer pressure",
+      "renewal risk",
+      "roadmap tradeoffs",
+      "engineering constraints"
+    ],
+    "directKnowledge": [
+      "why the work matters now",
+      "customer pressure",
+      "which tradeoffs are acceptable",
+      "where the team is capacity-constrained"
+    ],
+    "hedgedKnowledge": [
+      "exact legal/security details",
+      "systematic metrics",
+      "mature process artifacts"
+    ],
+    "blindSpots": [
+      "complete process documentation",
+      "deep specialist details",
+      "high-confidence analytics if instrumentation is immature"
+    ],
+    "answerStyle": "pragmatic, direct, MVP-oriented",
+    "exampleAnswers": [
+      "The customer is important enough that I would rather ship a small correct thing than design the perfect platform.",
+      "We do not have a clean spec. That is why I want to see what questions you ask before you decide what to build."
+    ]
+  }
+]

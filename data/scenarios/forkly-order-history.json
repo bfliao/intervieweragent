@@ -1,0 +1,145 @@
+{
+  "id": "forkly_order_history_export",
+  "title": "Forkly Order History Export",
+  "role": "New Grad Software Engineer",
+  "candidatePrompt": "Sam, your engineering manager, sends: \"Can you add a way for users to download their order history? Swamped today, thanks.\" You have 5 questions before recommending what to build.",
+  "persona": {
+    "name": "Sam",
+    "role": "Engineering Manager",
+    "tone": "warm, concise, busy, not adversarial",
+    "answerStyle": "answers exactly what is asked; does not connect all dots; kind but not handholding",
+    "expertise": [
+      "product engineering execution",
+      "scoping ambiguous feature requests",
+      "balancing customer commitments with engineering scope"
+    ],
+    "directKnowledge": [
+      "which customer segment requested the feature",
+      "the business reason behind the request",
+      "the renewal deadline",
+      "what level of v1 scope is acceptable"
+    ],
+    "hedgedKnowledge": [
+      "exact number of accounts that need the feature",
+      "legal requirements for exported order data",
+      "the precise fields the accounting team will import"
+    ],
+    "blindSpots": [
+      "exact legal wording for PII handling",
+      "customer-success relationship details",
+      "long-term product roadmap for consumer data export"
+    ],
+    "communicationRules": [
+      "short answers",
+      "plainspoken",
+      "no proactive synthesis",
+      "natural uncertainty for legal or account-count details"
+    ]
+  },
+  "maxQuestions": 5,
+  "ambientFacts": [
+    {
+      "id": "team_size",
+      "fact": "The team has 4 engineers and one designer on this product area.",
+      "whenToReveal": ["team", "who is working", "resources"]
+    },
+    {
+      "id": "stack",
+      "fact": "The app is React Native with a Node backend and Postgres.",
+      "whenToReveal": ["stack", "frontend", "backend", "database", "technical"]
+    },
+    {
+      "id": "request_channel",
+      "fact": "The request came through the sales/customer-success channel this morning.",
+      "whenToReveal": ["where", "source", "who reported", "channel"]
+    },
+    {
+      "id": "existing_history",
+      "fact": "Users can already view past orders in the app, but there is no export.",
+      "whenToReveal": ["existing", "current", "today", "already", "view"]
+    }
+  ],
+  "hiddenFacts": [
+    {
+      "id": "corporate_accounts",
+      "title": "Real user is corporate catering",
+      "fact": "The request is for corporate catering accounts, not all consumer users.",
+      "category": "user",
+      "weight": 1.4,
+      "knowledgeLevel": "direct",
+      "unlockTriggers": ["who", "asking", "user", "customer", "account", "consumer", "corporate"],
+      "requiresSpecificity": true,
+      "sampleResponse": "This is really for our corporate catering accounts, not every consumer user.",
+      "whyItMatters": "Changes the target user and prevents overbuilding a consumer self-serve feature."
+    },
+    {
+      "id": "expense_reporting",
+      "title": "Use case is expense reporting",
+      "fact": "Corporate admins need order history for accounting and expense reporting.",
+      "category": "use_case",
+      "weight": 1.4,
+      "knowledgeLevel": "direct",
+      "unlockTriggers": ["why", "use", "purpose", "expense", "accounting", "job", "need"],
+      "requiresSpecificity": true,
+      "sampleResponse": "They need it for expense reporting. Think accounting workflow, not a pretty browsing view.",
+      "whyItMatters": "Defines what output matters and rules out a purely visual feature."
+    },
+    {
+      "id": "csv_fields",
+      "title": "CSV with accounting fields",
+      "fact": "The useful output is a CSV with dates, totals, line items, and tax breakdown.",
+      "category": "format",
+      "weight": 1.0,
+      "knowledgeLevel": "direct",
+      "unlockTriggers": ["format", "csv", "pdf", "fields", "columns", "line item", "tax", "receipt"],
+      "requiresSpecificity": true,
+      "sampleResponse": "CSV is the useful format. They need dates, totals, line items, and tax breakdown.",
+      "whyItMatters": "Changes implementation from generic UI/download to a targeted data export."
+    },
+    {
+      "id": "renewal_deadline",
+      "title": "Renewal deadline",
+      "fact": "The request is tied to a corporate client renewal next month; minimal and shipped beats polished.",
+      "category": "deadline",
+      "weight": 1.2,
+      "knowledgeLevel": "direct",
+      "unlockTriggers": ["deadline", "when", "timeline", "priority", "urgent", "v1", "polished", "renewal"],
+      "requiresSpecificity": true,
+      "sampleResponse": "It is tied to a renewal next month. A minimal version shipped soon is better than a polished broad launch.",
+      "whyItMatters": "Changes scope and sequencing; candidate should recommend a small v1."
+    },
+    {
+      "id": "limited_scale",
+      "title": "Small initial scope",
+      "fact": "Only about 50 corporate accounts need this now, not the full 2M consumer user base.",
+      "category": "scope",
+      "weight": 1.0,
+      "knowledgeLevel": "hedged",
+      "unlockTriggers": ["how many", "scale", "all users", "everyone", "number", "accounts", "rollout"],
+      "requiresSpecificity": true,
+      "sampleResponse": "Roughly 50 corporate accounts need it right now. I would not assume this is for all 2 million users.",
+      "whyItMatters": "Prevents platform-level overengineering."
+    },
+    {
+      "id": "pii_constraint",
+      "title": "PII masking",
+      "fact": "Exports must mask addresses and payment details; legal has flagged the data as sensitive.",
+      "category": "risk",
+      "weight": 1.2,
+      "knowledgeLevel": "hedged",
+      "unlockTriggers": ["privacy", "pii", "legal", "card", "payment", "address", "sensitive", "mask"],
+      "requiresSpecificity": true,
+      "sampleResponse": "Good catch. Legal mentioned masking addresses and payment details; you should confirm the exact rule.",
+      "whyItMatters": "Adds a critical compliance constraint to the implementation."
+    }
+  ],
+  "trapAssumptions": [
+    {
+      "id": "consumer_download_my_data",
+      "assumption": "The candidate assumes this is a general consumer 'download my data' feature.",
+      "whyTempting": "The ticket says 'users' and 'download order history', which sounds like a broad consumer self-serve feature.",
+      "howToDisprove": "Ask who needs it and what job they are using the export for."
+    }
+  ],
+  "idealRecommendation": "Build a minimal CSV export for corporate catering accounts for expense reporting, including dates, totals, line items, and tax breakdown. Mask addresses and payment details, confirm exact fields with one account and legal, and ship before the renewal. Do not build a broad consumer self-serve export yet."
+}

@@ -1,0 +1,129 @@
+{
+  "id": "forkly_empty_cart_bug",
+  "title": "Forkly Empty Cart Bug",
+  "role": "New Grad Software Engineer",
+  "candidatePrompt": "Sam, your engineering manager, says: \"Some users say their cart is empty when they come back. Can you look into it?\" You have 5 questions before recommending what to investigate or fix.",
+  "persona": {
+    "name": "Sam",
+    "role": "Engineering Manager",
+    "tone": "warm, concise, busy, not adversarial",
+    "answerStyle": "answers exactly what is asked; does not connect all dots; kind but not handholding",
+    "expertise": [
+      "mobile product engineering",
+      "triaging customer-reported bugs",
+      "coordinating debugging across app and backend owners"
+    ],
+    "directKnowledge": [
+      "the symptom customers reported",
+      "which product surface is affected",
+      "recent release timeline",
+      "which team owns cart behavior"
+    ],
+    "hedgedKnowledge": [
+      "exact reproduction steps",
+      "whether the recent release is causal",
+      "guest-session persistence details",
+      "support ticket volume"
+    ],
+    "blindSpots": [
+      "low-level client storage implementation",
+      "server logs not yet inspected",
+      "exact impact on revenue"
+    ],
+    "communicationRules": [
+      "short answers",
+      "does not diagnose root cause unless asked toward it",
+      "hedges technical details outside direct ownership",
+      "does not recommend rollback without evidence"
+    ]
+  },
+  "maxQuestions": 5,
+  "ambientFacts": [
+    {
+      "id": "team_size",
+      "fact": "Two engineers touched checkout recently, but nobody is assigned to this yet.",
+      "whenToReveal": ["team", "who", "owner", "assigned"]
+    },
+    {
+      "id": "cart_stack",
+      "fact": "Cart state has both local app state and server-side persistence for logged-in users.",
+      "whenToReveal": ["stack", "state", "server", "local", "storage"]
+    },
+    {
+      "id": "report_source",
+      "fact": "The first reports came from customer support tickets.",
+      "whenToReveal": ["source", "reported", "where", "support"]
+    }
+  ],
+  "hiddenFacts": [
+    {
+      "id": "ios_only",
+      "title": "iOS only",
+      "fact": "The issue only appears in iOS reports; Android and web do not show the same pattern.",
+      "category": "platform",
+      "weight": 1.2,
+      "knowledgeLevel": "direct",
+      "unlockTriggers": ["platform", "ios", "android", "web", "device"],
+      "requiresSpecificity": true,
+      "sampleResponse": "The reports we have are iOS. I have not seen the same pattern on Android or web.",
+      "whyItMatters": "Narrows the investigation away from backend-only explanations."
+    },
+    {
+      "id": "guest_users",
+      "title": "Guest users affected",
+      "fact": "The issue affects guest users, not logged-in users.",
+      "category": "segment",
+      "weight": 1.4,
+      "knowledgeLevel": "direct",
+      "unlockTriggers": ["logged in", "guest", "user type", "segment", "account"],
+      "requiresSpecificity": true,
+      "sampleResponse": "It looks concentrated among guest users. Logged-in users seem mostly fine.",
+      "whyItMatters": "Points to local/session behavior rather than persisted cart records."
+    },
+    {
+      "id": "background_time",
+      "title": "After backgrounding",
+      "fact": "Carts vanish after the app is backgrounded for more than 30 minutes.",
+      "category": "repro",
+      "weight": 1.4,
+      "knowledgeLevel": "hedged",
+      "unlockTriggers": ["reproduce", "steps", "when", "background", "time", "30", "return"],
+      "requiresSpecificity": true,
+      "sampleResponse": "The rough repro is guest user adds items, backgrounds the app for 30-plus minutes, then returns.",
+      "whyItMatters": "Reveals the actual condition needed to reproduce the bug."
+    },
+    {
+      "id": "release_trap",
+      "title": "Recent UI release is a trap",
+      "fact": "A UI-only release shipped three days ago, but it is likely coincidental and not the root cause.",
+      "category": "trap",
+      "weight": 1.0,
+      "knowledgeLevel": "hedged",
+      "unlockTriggers": ["recent change", "release", "deploy", "rollback", "what changed"],
+      "requiresSpecificity": true,
+      "sampleResponse": "There was a UI-only release three days ago. It is tempting to blame that, but I am not sure it touches cart persistence.",
+      "whyItMatters": "Tests anchoring resistance; rollback is tempting but likely wrong."
+    },
+    {
+      "id": "session_expiry",
+      "title": "Session/cache expiry root cause",
+      "fact": "The likely root cause is guest cart session/cache expiry after inactivity.",
+      "category": "root_cause",
+      "weight": 1.8,
+      "knowledgeLevel": "hedged",
+      "unlockTriggers": ["session", "cache", "expiry", "persist", "storage", "inactivity"],
+      "requiresSpecificity": true,
+      "sampleResponse": "My hunch is guest cart persistence or session expiry after inactivity. Logged-in carts are server-backed.",
+      "whyItMatters": "Identifies the fix direction."
+    }
+  ],
+  "trapAssumptions": [
+    {
+      "id": "rollback_recent_release",
+      "assumption": "The candidate assumes the recent UI release caused the cart loss and recommends rollback.",
+      "whyTempting": "The timeline overlaps with the first reports.",
+      "howToDisprove": "Ask about affected platform, user segment, repro steps, and whether the changed code touches cart persistence."
+    }
+  ],
+  "idealRecommendation": "Investigate iOS guest cart persistence after backgrounding for 30+ minutes. Do not immediately roll back the UI release unless evidence ties it to cart persistence. Reproduce with guest users, inspect local/session expiry, and patch persistence or restore cart state on return."
+}

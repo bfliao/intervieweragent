@@ -81,6 +81,26 @@ function downloadMd(filename: string, content: string) {
   URL.revokeObjectURL(url);
 }
 
+function storeAssessmentPackage(
+  uuid: string,
+  candidate: Candidate,
+  app: CandidateApplication,
+  markdown: string,
+  scenarios: SavedScenario[]
+) {
+  const payload = {
+    id: uuid,
+    candidateName: candidate.name,
+    candidateEmail: candidate.email,
+    jobTitle: app.jobTitle,
+    targetRole: app.jobTitle,
+    markdown,
+    scenarios,
+    createdAt: new Date().toISOString(),
+  };
+  localStorage.setItem(`question_arena_assessment:${uuid}`, JSON.stringify(payload));
+}
+
 function generateUUID(): string {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
@@ -360,9 +380,11 @@ function CandidateRow({
                     onSend={(scenarios) => {
                       const uuid = generateUUID();
                       const md = renderAssessmentMd(uuid, candidate, app, scenarios);
+                      storeAssessmentPackage(uuid, candidate, app, md, scenarios);
                       downloadMd(`${uuid}_${candidate.id}.md`, md);
                       recordSent(app, uuid);
                       setSendModal(null);
+                      return `${window.location.origin}/assessment?assessment=${uuid}`;
                     }}
                     onRemove={() => removeApplication(idx)}
                     sendModal={sendModal}
@@ -390,12 +412,13 @@ function ApplicationRow({
 }: {
   app: CandidateApplication;
   savedScenarios: SavedScenario[];
-  onSend: (scenarios: SavedScenario[]) => void;
+  onSend: (scenarios: SavedScenario[]) => string | undefined;
   onRemove: () => void;
   sendModal: CandidateApplication | null;
   setSendModal: (a: CandidateApplication | null) => void;
 }) {
   const isOpen = sendModal === app;
+  const [lastAssessmentUrl, setLastAssessmentUrl] = useState("");
 
   // Scenarios for this job
   const relevantScenarios = savedScenarios.filter(
@@ -433,7 +456,11 @@ function ApplicationRow({
           jobTitle={app.jobTitle}
           scenarios={relevantScenarios}
           allScenarios={savedScenarios}
-          onSend={onSend}
+          onSend={(scenarios) => {
+            const url = onSend(scenarios);
+            if (url) setLastAssessmentUrl(url);
+            return url;
+          }}
           onCancel={() => setSendModal(null)}
         />
       )}
@@ -444,6 +471,28 @@ function ApplicationRow({
           {app.assessmentsSent.map((uuid) => (
             <p key={uuid} className="font-mono text-xs text-slate-600">{uuid}</p>
           ))}
+        </div>
+      )}
+
+      {lastAssessmentUrl && (
+        <div className="rounded-md border border-emerald-300/30 bg-emerald-300/10 p-2">
+          <p className="mb-1 text-xs font-semibold text-emerald-200">
+            Candidate URL
+          </p>
+          <div className="flex gap-2">
+            <input
+              readOnly
+              value={lastAssessmentUrl}
+              className="input flex-1 font-mono text-xs"
+            />
+            <button
+              type="button"
+              onClick={() => navigator.clipboard.writeText(lastAssessmentUrl)}
+              className="btn-ghost shrink-0"
+            >
+              Copy
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -462,7 +511,7 @@ function SendAssessmentPanel({
   jobTitle: string;
   scenarios: SavedScenario[];
   allScenarios: SavedScenario[];
-  onSend: (scenarios: SavedScenario[]) => void;
+  onSend: (scenarios: SavedScenario[]) => string | undefined;
   onCancel: () => void;
 }) {
   const [selected, setSelected] = useState<Set<string>>(() => new Set(scenarios.map((s) => s.scenario.id)));
@@ -517,7 +566,9 @@ function SendAssessmentPanel({
       <div className="flex items-center justify-between pt-1">
         <span className="text-xs text-slate-500">{chosenScenarios.length} selected → 1 .md file</span>
         <button
-          onClick={() => { if (chosenScenarios.length > 0) onSend(chosenScenarios); }}
+          onClick={() => {
+            if (chosenScenarios.length > 0) onSend(chosenScenarios);
+          }}
           disabled={chosenScenarios.length === 0}
           className="btn-primary text-xs py-1.5 px-4"
         >
