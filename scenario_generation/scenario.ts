@@ -43,11 +43,13 @@ Hard requirements:
   signals (real + red herrings mixed together — do not label them).
 
 Also produce candidate-facing instructions:
-- "todos": 3-5 concrete tasks the candidate must complete, written as direct
-  prompts (e.g. "Walk us through your diagnostic process step by step",
-  "Identify the most likely root cause and explain your reasoning").
-  Tasks should match the difficulty level — junior tasks are simpler and
-  more guided; senior tasks require open-ended system reasoning.
+- "todos": 3-5 tasks the candidate must complete. CRITICAL: every task must
+  anchor to a SPECIFIC detail from the brief — a metric name, a number, a
+  component, an error message. Never write generic tasks like "identify the
+  root cause"; instead write "X dropped from A to B — walk us through your
+  first hypothesis and how you'd test it." Tasks should match the difficulty
+  level — junior tasks are more guided; senior tasks require open-ended
+  system reasoning across multiple signals.
 - "scope.focus": 2-4 short phrases naming the areas the candidate SHOULD spend
   time on (e.g. "diagnostic reasoning", "signal prioritization").
 - "scope.skip": 1-3 short phrases naming what is explicitly OUT OF SCOPE
@@ -104,6 +106,7 @@ Review the draft scenario and identify concrete issues in these areas:
 3. RED HERRING QUALITY — are decoy signals too obvious, too similar to real signals, or mislabeled?
 4. DIFFICULTY FIT — is the scope, signal count, and complexity correct for the stated level?
 5. GROUNDING — does it read like a real system failure or generic boilerplate?
+6. TODO SPECIFICITY — do todos reference specific details (numbers, metrics, components) from the brief, or are they generic filler ("identify root cause", "walk through your process")?
 
 Set needs_revision to true only if there are 2 or more significant issues.
 

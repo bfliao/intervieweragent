@@ -6,26 +6,52 @@ import {
   type Scenario,
 } from "./types";
 
-const SYSTEM_PROMPT = `You are an expert hiring rubric designer (a "critique" agent).
+const SYSTEM_PROMPT = `You are an expert hiring rubric designer.
 
-Given an evaluation scenario, produce a RECURSIVE scoring rubric tree that a
-hiring panel can use to judge a candidate on this scenario. Do NOT simulate or
-role-play the interview; only design the rubric.
+Given an evaluation scenario, produce a scoring rubric that a hiring panel can use
+to assess a candidate. Do NOT simulate the interview; only design the rubric.
 
-Each rubric node ("criterion") has:
-- "evidence": a concrete, observable signal that this criterion is met
-  (what you would literally see/hear from a strong candidate).
-- "tags": 1-3 short lowercase hashtags derived from the evidence
-  (e.g. "cache", "redis", "prioritization"). No '#' symbol.
-- "score": a number in [0,1] representing this node's relative weight AMONG ITS
-  SIBLINGS. The scores of all siblings under the same parent MUST sum to 1.0.
-- "followups": an array of child criteria that refine this one (same shape).
-  Use [] when there is nothing to refine.
+## Breadth requirement
+Generate 6-8 TOP-LEVEL criteria — one per distinct skill dimension the scenario
+tests. Do NOT collapse multiple skills into one node. Every todo and focus area
+in the scenario must map to at least one criterion.
 
-Rules:
-- The top-level "criteria" array's scores must also sum to 1.0.
-- Nesting depth must not exceed ${MAX_FOLLOWUP_DEPTH} levels.
-- Prefer 2-5 children per node; keep evidence specific and testable.
+Dimensions you MUST cover (adapt labels to the specific scenario):
+1. Signal reading — how the candidate interprets the observable data
+2. Hypothesis formation — how they generate and rank candidate explanations
+3. Red herring handling — whether they actively dismiss irrelevant signals
+4. Root cause identification — how they trace symptoms back to cause
+5. Immediate mitigation — actions to stop the bleeding right now
+6. Proper fix — the correct long-term resolution
+7. Prevention / process — what they'd add so this class of bug can't ship again
+8. Communication — how they explain findings to a non-technical stakeholder
+
+Add further top-level criteria for any additional skills the scenario specifically
+probes beyond these eight.
+
+## Permissiveness requirement
+Each "evidence" field must describe the PATTERN of a satisfactory response, not
+a single correct answer. Where multiple valid approaches exist, list them:
+
+  "Candidate demonstrates X. Acceptable approaches include: [A], [B], or [C].
+   Does not require [overly specific detail] — directional correctness is
+   sufficient for full credit."
+
+Never write evidence as a single required statement the candidate must hit word-
+for-word. Interviewers will use this rubric to score real, varied answers.
+
+## Followups
+Use followups to represent partial-credit gradations within a dimension:
+- Full credit: candidate [does X completely]
+- Partial credit: candidate [shows correct direction but misses Y]
+- Minimal credit: candidate [names the right area but cannot explain mechanism]
+
+## Schema
+Each node:
+- "evidence": permissive description including acceptable alternatives (see above)
+- "tags": 1-3 short lowercase tags
+- "score": relative weight among siblings; siblings at every level sum to 1.0
+- "followups": child criteria (same shape); use [] when no gradation is needed
 
 Return STRICT JSON only:
 {
@@ -35,16 +61,32 @@ Return STRICT JSON only:
 }`;
 
 function buildUserPrompt(scenario: Scenario): string {
+  const todos = scenario.todos?.length
+    ? scenario.todos.map((t, i) => `${i + 1}. ${t}`).join("\n")
+    : "(none)";
+
+  const scopeFocus = scenario.scope?.focus?.join(", ") || "(none)";
+  const scopeSkip = scenario.scope?.skip?.join(", ") || "(none)";
+
   return `SCENARIO BRIEF:
 ${scenario.brief}
 
-FOCUS AREAS:
+CANDIDATE TASKS (what the candidate is explicitly asked to do — every task needs
+at least one rubric criterion):
+${todos}
+
+SCOPE — FOCUS ON: ${scopeFocus}
+SCOPE — SKIP: ${scopeSkip}
+
+INTERNAL FOCUS AREAS (for context):
 ${scenario.focusAreas.map((f) => `- ${f}`).join("\n") || "- (none)"}
 
-TARGET SKILLSET (for context):
+TARGET SKILLSET:
 ${scenario.derivedFrom.skillset.map((s) => `- ${s}`).join("\n") || "- (none)"}
 
-Design the recursive scoring rubric now.`;
+Design the full rubric now. Ensure every candidate task maps to at least one
+top-level criterion, and that all evidence descriptions are permissive (list
+acceptable alternative approaches, not a single required answer).`;
 }
 
 function makeId(prefix: string): string {

@@ -90,11 +90,25 @@ function isScenarioSendable(scenario: SavedScenario) {
   return brief.length >= 80;
 }
 
+function formatCandidatePrompt(s: SavedScenario["scenario"]): string {
+  const parts: string[] = [s.brief.trim()];
+  if (s.todos?.length) {
+    parts.push("\nYour Tasks:");
+    s.todos.forEach((t, i) => parts.push(`${i + 1}. ${t}`));
+  }
+  if (s.scope?.focus?.length || s.scope?.skip?.length) {
+    parts.push("");
+    if (s.scope.focus?.length) parts.push(`Focus on: ${s.scope.focus.join(", ")}`);
+    if (s.scope.skip?.length) parts.push(`Skip: ${s.scope.skip.join(", ")}`);
+  }
+  return parts.join("\n");
+}
+
 function buildAssessmentScenarios(scenarios: SavedScenario[]) {
   return scenarios.map((saved) => ({
     id: saved.scenario.id,
     jobTitle: saved.jobTitle,
-    candidatePrompt: saved.scenario.brief,
+    candidatePrompt: formatCandidatePrompt(saved.scenario),
     focusAreas: saved.scenario.focusAreas,
     sourceTitle: saved.sourceTitle || saved.scenario.groundedOn?.title,
     sourceUrl: saved.sourceUrl || saved.scenario.groundedOn?.source,

@@ -984,7 +984,7 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
             <h3 className="mb-2 text-sm font-bold text-slate-300">
               Problem Statement
             </h3>
-            <p className="text-sm leading-relaxed text-slate-100">
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-100">
               {scenario.candidatePrompt}
             </p>
           </div>

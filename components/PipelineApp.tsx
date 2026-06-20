@@ -15,6 +15,8 @@ import {
   BookmarkPlus,
   ChevronDown,
   ChevronRight,
+  Link2,
+  Check,
 } from "lucide-react";
 import type {
   Criterion,
@@ -72,6 +74,11 @@ export default function PipelineApp({
   const [teamOpen, setTeamOpen] = useState(false);
   const [outputTab, setOutputTab] = useState<"scenario" | "rubric">("scenario");
   const [activeJobTitle, setActiveJobTitle] = useState<string>("");
+
+  // Share state
+  const [sharing, setSharing] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   // Generation options
   const [difficulty, setDifficulty] = useState<Difficulty>("mid");
@@ -171,6 +178,7 @@ export default function PipelineApp({
     setCritique(null);
     setScenarios([]);
     setSelectedScenarioIdx(0);
+    setShareUrl(null);
     if (useMock) {
       setScenarios([MOCK_SCENARIO]);
       return;
@@ -227,6 +235,68 @@ export default function PipelineApp({
     } finally {
       setLoading(null);
     }
+  }
+
+  function formatCandidatePrompt(s: Scenario): string {
+    const parts: string[] = [s.brief.trim()];
+    if (s.todos?.length) {
+      parts.push("\nYour Tasks:");
+      s.todos.forEach((t, i) => parts.push(`${i + 1}. ${t}`));
+    }
+    if (s.scope?.focus?.length || s.scope?.skip?.length) {
+      parts.push("");
+      if (s.scope.focus?.length) parts.push(`Focus on: ${s.scope.focus.join(", ")}`);
+      if (s.scope.skip?.length) parts.push(`Skip: ${s.scope.skip.join(", ")}`);
+    }
+    return parts.join("\n");
+  }
+
+  async function shareScenario() {
+    if (!scenario || sharing) return;
+    setSharing(true);
+    setShareUrl(null);
+    try {
+      const pkg = {
+        id: scenario.id,
+        jobTitle: activeJobTitle || undefined,
+        markdown: "",
+        scenarios: [{ scenario, jobTitle: activeJobTitle || undefined }],
+        assessmentScenarios: [
+          {
+            id: scenario.id,
+            jobTitle: activeJobTitle || undefined,
+            candidatePrompt: formatCandidatePrompt(scenario),
+            focusAreas: scenario.focusAreas,
+            sourceTitle: scenario.groundedOn?.title,
+            sourceUrl: scenario.groundedOn?.source,
+            derivedFrom: scenario.derivedFrom,
+          },
+        ],
+        createdAt: new Date().toISOString(),
+      };
+      localStorage.setItem(
+        `question_arena_assessment:${scenario.id}`,
+        JSON.stringify(pkg)
+      );
+      await fetch("/api/assessments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(pkg),
+      });
+      const url = `${window.location.origin}/assessment?assessment=${scenario.id}`;
+      setShareUrl(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to generate share link.");
+    } finally {
+      setSharing(false);
+    }
+  }
+
+  async function copyShareUrl() {
+    if (!shareUrl) return;
+    await navigator.clipboard.writeText(shareUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }
 
   // ---- JD gate (shown on launch) ----
@@ -595,6 +665,18 @@ export default function PipelineApp({
                 </button>
               )}
               <button
+                onClick={shareScenario}
+                disabled={sharing}
+                className="btn-ghost"
+              >
+                {sharing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Link2 className="h-4 w-4" />
+                )}
+                Share
+              </button>
+              <button
                 onClick={() => { runCritique(); setOutputTab("rubric"); }}
                 disabled={loading !== null}
                 className="btn-primary"
@@ -625,6 +707,7 @@ export default function PipelineApp({
                 onClick={() => {
                   setSelectedScenarioIdx(i);
                   setCritique(null);
+                  setShareUrl(null);
                 }}
                 className={`rounded px-3 py-1 text-xs font-medium transition-colors ${
                   i === selectedScenarioIdx
@@ -726,6 +809,25 @@ export default function PipelineApp({
                     <Tag key={f}>{f}</Tag>
                   ))}
                 </div>
+
+                {/* Share URL */}
+                {shareUrl && (
+                  <div className="rounded-lg border border-emerald-300/30 bg-emerald-300/10 p-3">
+                    <p className="mb-1.5 text-xs font-medium text-emerald-200">
+                      Candidate link ready — send this to the candidate.
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        readOnly
+                        value={shareUrl}
+                        className="input flex-1 font-mono text-xs"
+                      />
+                      <button onClick={copyShareUrl} className="btn-ghost shrink-0">
+                        {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : "Copy"}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="flex h-full items-center justify-center text-sm text-slate-500">
