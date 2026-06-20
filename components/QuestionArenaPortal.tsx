@@ -31,6 +31,42 @@ interface StoredAssessmentPackage {
   markdown: string;
   targetRole?: string;
   createdAt: string;
+  assessmentScenarios?: StoredAssessmentScenario[];
+  scenarios?: StoredRawSavedScenario[];
+}
+
+interface StoredAssessmentScenario {
+  id: string;
+  jobTitle?: string;
+  candidatePrompt?: string;
+  focusAreas?: string[];
+  sourceTitle?: string;
+  sourceUrl?: string;
+  jd?: string;
+  derivedFrom?: {
+    jd?: string;
+    skillset?: string[];
+    teamInput?: Array<{
+      memberName?: string;
+      description?: string;
+    }>;
+  };
+}
+
+interface StoredRawSavedScenario {
+  jobTitle?: string;
+  sourceTitle?: string;
+  sourceUrl?: string;
+  scenario?: {
+    id?: string;
+    brief?: string;
+    focusAreas?: string[];
+    derivedFrom?: StoredAssessmentScenario["derivedFrom"];
+    groundedOn?: {
+      title?: string;
+      source?: string;
+    };
+  };
 }
 
 function formatJson(value: unknown) {
@@ -65,6 +101,161 @@ function classificationClassName(classification: QuestionClassification) {
     scattershot: "border-red-300/40 bg-red-300/10 text-red-200",
   };
   return classes[classification];
+}
+
+function firstAssessmentScenario(stored: StoredAssessmentPackage) {
+  const normalized = stored.assessmentScenarios?.[0];
+  if (normalized?.candidatePrompt?.trim()) return normalized;
+
+  const raw = stored.scenarios?.[0];
+  const rawScenario = raw?.scenario;
+  const brief = rawScenario?.brief?.trim();
+  if (!rawScenario || !brief) return null;
+
+  return {
+    id: rawScenario.id || stored.id,
+    jobTitle: raw.jobTitle || stored.jobTitle,
+    candidatePrompt: brief,
+    focusAreas: rawScenario.focusAreas || [],
+    sourceTitle: raw.sourceTitle || rawScenario.groundedOn?.title,
+    sourceUrl: raw.sourceUrl || rawScenario.groundedOn?.source,
+    jd: rawScenario.derivedFrom?.jd,
+    derivedFrom: rawScenario.derivedFrom,
+  } satisfies StoredAssessmentScenario;
+}
+
+function scenarioConfigFromAssessment(
+  stored: StoredAssessmentPackage,
+  fallbackRole: string
+): ScenarioConfig | null {
+  const item = firstAssessmentScenario(stored);
+  const candidatePrompt = item?.candidatePrompt?.trim();
+  if (!item || !candidatePrompt) return null;
+
+  const focusAreas = item.focusAreas?.filter(Boolean) || [];
+  const role = stored.targetRole || item.jobTitle || stored.jobTitle || fallbackRole;
+  const teamInput = item.derivedFrom?.teamInput || [];
+  const skillset = item.derivedFrom?.skillset || focusAreas;
+  const teamPreferences = teamInput
+    .map((member) =>
+      [member.memberName, member.description].filter(Boolean).join(": ")
+    )
+    .filter(Boolean);
+
+  return {
+    id: item.id || stored.id,
+    title: item.jobTitle || stored.jobTitle || "Assessment",
+    role,
+    candidatePrompt,
+    persona: {
+      name: "Sam",
+      role: "Engineering Manager",
+      tone: "kind, busy, concise, and factual",
+      answerStyle:
+        "Answer only the question asked. Give more useful context for specific, grounded questions. Do not proactively solve the incident for the candidate.",
+      expertise: skillset,
+      directKnowledge: [
+        ...(item.sourceTitle ? [`source incident: ${item.sourceTitle}`] : []),
+        ...teamPreferences,
+      ],
+      hedgedKnowledge: [
+        "implementation details not shown in the assessment package",
+        "exact production internals outside the supplied scenario",
+      ],
+      communicationRules: [
+        "Keep answers short.",
+        "Do not reveal all context at once.",
+        "If the candidate asks a broad question, answer broadly.",
+      ],
+    },
+    maxQuestions: 5,
+    ambientFacts: [
+      {
+        id: "source",
+        fact: item.sourceUrl
+          ? `This scenario is grounded on ${item.sourceTitle || "a source incident"}: ${item.sourceUrl}.`
+          : `This scenario is grounded on ${item.sourceTitle || "a source incident"}.`,
+        whenToReveal: ["source", "incident", "grounded", "context"],
+      },
+      {
+        id: "focus",
+        fact: focusAreas.length
+          ? `The assessment is meant to probe ${focusAreas.join(", ")}.`
+          : "The assessment is meant to probe how the candidate handles ambiguity.",
+        whenToReveal: ["focus", "skill", "evaluate", "looking for"],
+      },
+    ],
+    hiddenFacts: [
+      {
+        id: "impact_scope",
+        title: "Impact and scope",
+        fact: "The candidate should ask who or what is affected before proposing a fix.",
+        category: "scope",
+        weight: 1,
+        knowledgeLevel: "direct",
+        unlockTriggers: ["who", "affected", "impact", "scope", "users", "customers"],
+        requiresSpecificity: true,
+        sampleResponse:
+          "The first useful thing is to establish impact and scope before jumping to a fix.",
+        whyItMatters:
+          "Good incident work starts by understanding blast radius.",
+      },
+      {
+        id: "evidence",
+        title: "Evidence and reproduction",
+        fact: "The candidate should ask for logs, repro path, timing, and concrete evidence.",
+        category: "debugging",
+        weight: 1,
+        knowledgeLevel: "direct",
+        unlockTriggers: ["logs", "reproduce", "evidence", "trace", "error", "when"],
+        requiresSpecificity: true,
+        sampleResponse:
+          "I would anchor on the concrete evidence: logs, timing, repro steps, and what changed around the failure.",
+        whyItMatters:
+          "This rewards evidence-driven debugging rather than guessing.",
+      },
+      {
+        id: "change_or_boundary",
+        title: "Change or system boundary",
+        fact: "The candidate should inspect recent changes and integration/data-shape boundaries.",
+        category: "root-cause",
+        weight: 1,
+        knowledgeLevel: "hedged",
+        unlockTriggers: ["changed", "deploy", "release", "dependency", "payload", "type", "boundary"],
+        requiresSpecificity: true,
+        sampleResponse:
+          "A useful angle is whether a recent change or boundary mismatch changed what the downstream system receives.",
+        whyItMatters:
+          "Many ambiguous failures come from boundary mismatches, not the visible symptom alone.",
+      },
+      {
+        id: "next_step",
+        title: "Next immediate step",
+        fact: "The candidate should choose a high-signal next action under uncertainty.",
+        category: "ownership",
+        weight: 1,
+        knowledgeLevel: "direct",
+        unlockTriggers: ["next", "priority", "mitigation", "rollback", "risk", "deadline"],
+        requiresSpecificity: true,
+        sampleResponse:
+          "I care about the next high-signal action you would take, not a perfect final answer immediately.",
+        whyItMatters:
+          "This tests ownership and practical judgment.",
+      },
+    ],
+    trapAssumptions: [
+      {
+        id: "visible_error_is_full_answer",
+        assumption: "The visible error message fully explains what to fix.",
+        whyTempting:
+          "A concrete error string makes it tempting to jump straight to code.",
+        howToDisprove:
+          "Ask about impact, evidence, recent changes, and system boundaries.",
+      },
+    ],
+    idealRecommendation:
+      "Ask targeted questions to establish impact, evidence, likely boundary/change, and the next immediate action.",
+  };
 }
 
 export default function QuestionArenaPortal({
@@ -271,11 +462,26 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
 
         const markdown = stored.markdown || "";
         const role = stored.targetRole || stored.jobTitle || targetRole;
+        const linkedScenario = scenarioConfigFromAssessment(stored, role);
 
         setRawStoryline(markdown);
         setTargetRole(role);
         setDevMode(false);
         setAssessmentLoadError("");
+
+        if (linkedScenario) {
+          setScenario(linkedScenario);
+          setScenarioText(formatJson(linkedScenario));
+          setTemplateId(linkedScenario.id);
+          resetRun(linkedScenario);
+          setStatus(
+            `Loaded assessment ${id}${
+              stored.candidateName ? ` for ${stored.candidateName}` : ""
+            } from the generated scenario package.`
+          );
+          return;
+        }
+
         setStatus(
           `Loaded assessment ${id}${
             stored.candidateName ? ` for ${stored.candidateName}` : ""

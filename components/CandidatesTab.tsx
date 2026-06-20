@@ -85,6 +85,27 @@ function buildAssessmentUrl(origin: string, uuid: string) {
   return `${origin}/assessment?assessment=${uuid}`;
 }
 
+function isScenarioSendable(scenario: SavedScenario) {
+  const brief = scenario.scenario.brief.trim();
+  return brief.length >= 80;
+}
+
+function buildAssessmentScenarios(scenarios: SavedScenario[]) {
+  return scenarios.map((saved) => ({
+    id: saved.scenario.id,
+    jobTitle: saved.jobTitle,
+    candidatePrompt: saved.scenario.brief,
+    focusAreas: saved.scenario.focusAreas,
+    sourceTitle: saved.sourceTitle || saved.scenario.groundedOn?.title,
+    sourceUrl: saved.sourceUrl || saved.scenario.groundedOn?.source,
+    groundedOn: saved.scenario.groundedOn,
+    jd: saved.jd,
+    derivedFrom: saved.scenario.derivedFrom,
+    critique: saved.critique,
+    rawSavedScenario: saved,
+  }));
+}
+
 function createAssessmentPackage(
   uuid: string,
   candidate: Candidate,
@@ -100,6 +121,7 @@ function createAssessmentPackage(
     targetRole: app.jobTitle,
     markdown,
     scenarios,
+    assessmentScenarios: buildAssessmentScenarios(scenarios),
     createdAt: new Date().toISOString(),
   };
 }
@@ -599,6 +621,15 @@ function SendAssessmentPanel({
         <button
           onClick={async () => {
             if (chosenScenarios.length === 0 || generating) return;
+            const incomplete = chosenScenarios.find(
+              (scenario) => !isScenarioSendable(scenario)
+            );
+            if (incomplete) {
+              setError(
+                "Selected scenario looks incomplete. Regenerate or edit it before creating a candidate link."
+              );
+              return;
+            }
             setGenerating(true);
             setError("");
             try {
