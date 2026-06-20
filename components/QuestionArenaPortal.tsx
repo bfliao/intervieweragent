@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   gatekeepQuestion,
   generateManagerAnswer,
@@ -67,6 +67,11 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
   const [modelStatus, setModelStatus] = useState(
     "Model endpoint not tested in UI."
   );
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [transcript, setTranscript] = useState("");
+  const recognitionRef = useRef<{ stop: () => void } | null>(null);
+  const audioRef = useRef<AudioBufferSourceNode | null>(null);
 
   const questionsLeft = Math.max(scenario.maxQuestions - messages.length / 2, 0);
   const unlockedFacts = useMemo(
@@ -209,6 +214,7 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
       setUnlockedFactIds(nextUnlocked);
       setLastDecision(decision);
       setReport(null);
+      void speakManagerAnswer(answer);
     } catch (error) {
       setQuestion(text);
       setStatus(error instanceof Error ? error.message : "Answer failed.");
@@ -277,6 +283,116 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
         error instanceof Error ? `Not connected: ${error.message}` : "Not connected."
       );
     }
+  }
+
+  async function speakManagerAnswer(text: string) {
+    try {
+      if (audioRef.current) {
+        audioRef.current.stop();
+        audioRef.current = null;
+      }
+      const res = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) return;
+      const arrayBuffer = await res.arrayBuffer();
+      const audioCtx = new AudioContext();
+      const decoded = await audioCtx.decodeAudioData(arrayBuffer);
+      const source = audioCtx.createBufferSource();
+      source.buffer = decoded;
+      source.connect(audioCtx.destination);
+      source.start(0);
+      audioRef.current = source;
+    } catch {
+      // TTS errors are non-fatal; silently ignore
+    }
+  }
+
+  function startRecording() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const Win = window as any;
+    const SR = Win.SpeechRecognition ?? Win.webkitSpeechRecognition;
+    if (!SR) {
+      setStatus("Speech recognition is not supported in this browser. Please use Chrome or Edge.");
+      return;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const recognition: any = new SR();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+    let finalText = "";
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onresult = (event: any) => {
+      let interim = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        if (result.isFinal) {
+          finalText += result[0].transcript;
+        } else {
+          interim += result[0].transcript;
+        }
+      }
+      setTranscript(finalText + interim);
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onerror = (event: any) => {
+      setStatus(`Speech recognition error: ${event.error as string}`);
+      setIsRecording(false);
+    };
+    recognition.onend = () => {
+      setIsRecording(false);
+      const text = finalText.trim();
+      if (text) {
+        setTranscript("");
+        void (async () => {
+          const q = text;
+          setQuestion("");
+          setLoadingAnswer(true);
+          try {
+            let decision: GatekeeperDecision;
+            let answer: string;
+            if (answerMode === "model") {
+              const res = await fetch("/api/question-arena/answer", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ scenario, question: q, unlockedFactIds, answerPrompt }),
+              });
+              if (!res.ok) throw new Error(await res.text());
+              const data = (await res.json()) as { decision: GatekeeperDecision; answer: string; modelUsed?: string; source?: string; warning?: string };
+              decision = data.decision;
+              answer = data.answer;
+              setStatus(data.warning ? data.warning : `Answered with ${data.modelUsed || "model endpoint"} (${data.source || "model"}).`);
+            } else {
+              decision = gatekeepQuestion(q, scenario, unlockedFactIds);
+              answer = generateManagerAnswer(scenario, decision);
+              setStatus("Answered with deterministic mock.");
+            }
+            const nextUnlocked = Array.from(new Set([...unlockedFactIds, ...decision.unlockedFactIds]));
+            setMessages((current) => [...current, { role: "candidate", content: q }, { role: "manager", content: answer }]);
+            setUnlockedFactIds(nextUnlocked);
+            setLastDecision(decision);
+            setReport(null);
+            void speakManagerAnswer(answer);
+          } catch (error) {
+            setQuestion(q);
+            setStatus(error instanceof Error ? error.message : "Answer failed.");
+          } finally {
+            setLoadingAnswer(false);
+          }
+        })();
+      }
+    };
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsRecording(true);
+    setTranscript("");
+  }
+
+  function stopRecording() {
+    recognitionRef.current?.stop();
   }
 
   function exportRun() {
@@ -514,29 +630,102 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
           ))}
         </div>
 
-        <form
-          onSubmit={askManager}
-          className="border-t border-slate-800 bg-background p-4"
-        >
-          <label className="mb-2 block text-sm font-semibold text-slate-300">
-            Ask the manager
-          </label>
-          <div className="grid grid-cols-[1fr_auto] gap-2">
-            <input
-              value={question}
-              onChange={(event) => setQuestion(event.target.value)}
-              disabled={questionsLeft <= 0 || loadingAnswer}
-              placeholder="Ask one focused question..."
-              className="rounded-md border border-slate-700 bg-surface px-3 py-2 text-sm outline-none focus:border-emerald-300 disabled:opacity-50"
-            />
-            <button
-              disabled={questionsLeft <= 0 || loadingAnswer}
-              className="rounded-md bg-emerald-300 px-4 py-2 text-sm font-bold text-slate-950 disabled:opacity-50"
-            >
-              {loadingAnswer ? "Asking..." : "Ask"}
-            </button>
+        <div className="border-t border-slate-800 bg-background px-4 pt-3 pb-0">
+          <div className="mb-3 flex items-center justify-between">
+            <label className="text-sm font-semibold text-slate-300">
+              Ask the manager
+            </label>
+            <div className="flex items-center gap-1 rounded-full border border-slate-700 p-0.5">
+              <button
+                type="button"
+                onClick={() => { setVoiceMode(false); stopRecording(); }}
+                className={`rounded-full px-3 py-1 text-xs font-bold transition-colors ${
+                  !voiceMode
+                    ? "bg-emerald-300 text-slate-950"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                Text
+              </button>
+              <button
+                type="button"
+                onClick={() => setVoiceMode(true)}
+                className={`rounded-full px-3 py-1 text-xs font-bold transition-colors ${
+                  voiceMode
+                    ? "bg-emerald-300 text-slate-950"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                Voice
+              </button>
+            </div>
           </div>
-        </form>
+        </div>
+
+        {!voiceMode ? (
+          <form
+            onSubmit={askManager}
+            className="border-t border-slate-800 bg-background p-4 pt-2"
+          >
+            <div className="grid grid-cols-[1fr_auto] gap-2">
+              <input
+                value={question}
+                onChange={(event) => setQuestion(event.target.value)}
+                disabled={questionsLeft <= 0 || loadingAnswer}
+                placeholder="Ask one focused question..."
+                className="rounded-md border border-slate-700 bg-surface px-3 py-2 text-sm outline-none focus:border-emerald-300 disabled:opacity-50"
+              />
+              <button
+                disabled={questionsLeft <= 0 || loadingAnswer}
+                className="rounded-md bg-emerald-300 px-4 py-2 text-sm font-bold text-slate-950 disabled:opacity-50"
+              >
+                {loadingAnswer ? "Asking..." : "Ask"}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className="border-t border-slate-800 bg-background p-4 pt-2">
+            <div className="flex flex-col items-center gap-3">
+              {transcript && (
+                <p className="w-full rounded-md border border-slate-700 bg-surface px-3 py-2 text-sm leading-relaxed text-slate-200">
+                  {transcript}
+                </p>
+              )}
+              {!isRecording ? (
+                <button
+                  type="button"
+                  onClick={startRecording}
+                  disabled={questionsLeft <= 0 || loadingAnswer}
+                  className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-300 text-slate-950 shadow-lg transition-transform hover:scale-105 disabled:opacity-50"
+                  title="Start recording"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6">
+                    <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                    <path d="M19 11a1 1 0 1 0-2 0 5 5 0 0 1-10 0 1 1 0 1 0-2 0 7 7 0 0 0 6 6.92V20H9a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-2.08A7 7 0 0 0 19 11Z" />
+                  </svg>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={stopRecording}
+                  className="flex h-14 w-14 animate-pulse items-center justify-center rounded-full bg-red-500 text-white shadow-lg transition-transform hover:scale-105"
+                  title="Stop recording"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6">
+                    <rect x="6" y="6" width="12" height="12" rx="1" />
+                  </svg>
+                </button>
+              )}
+              <p className="text-xs text-slate-500">
+                {loadingAnswer
+                  ? "Sending..."
+                  : isRecording
+                  ? "Recording — tap to stop and send"
+                  : "Tap the mic to start speaking"}
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="border-t border-slate-800 bg-background p-4">
           <label className="mb-2 block text-sm font-semibold text-slate-300">
