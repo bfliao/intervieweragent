@@ -67,3 +67,38 @@ export interface CritiqueOutput {
   scenarioId: string;
   criteria: Criterion[];
 }
+
+export interface CandidateApplication {
+  jobTitle: string;
+  appliedAt: string;
+  assessmentsSent: string[]; // UUIDs
+}
+
+export interface Candidate {
+  id: string;
+  createdAt: string;
+  name: string;
+  email: string;
+  phone?: string;
+  notes?: string;
+  applications: CandidateApplication[];
+}
+
+export interface SavedJob {
+  id: string;
+  savedAt: string;
+  title: string;
+  jd: string;
+  skills: string;
+  other: string;
+}
+
+export interface SavedScenario {
+  savedAt: string;
+  jobTitle?: string;
+  jd: string;
+  sourceTitle?: string;
+  sourceUrl?: string;
+  scenario: Scenario;
+  critique: CritiqueOutput | null;
+}
