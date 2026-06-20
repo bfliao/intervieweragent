@@ -1,0 +1,7 @@
+.next
+node_modules
+.git
+.env*
+*.pem
+.assessment-store.json
+.scenario-store.json

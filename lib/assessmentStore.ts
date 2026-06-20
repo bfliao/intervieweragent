@@ -16,7 +16,9 @@ const globalForAssessments = globalThis as typeof globalThis & {
   __questionArenaAssessments?: Map<string, StoredAssessmentPackage>;
 };
 
-const storePath = path.join(process.cwd(), ".assessment-store.json");
+const storePath =
+  process.env.ASSESSMENT_STORE_PATH ??
+  path.join(process.cwd(), ".assessment-store.json");
 
 function readPersistedStore() {
   if (!existsSync(storePath)) return new Map<string, StoredAssessmentPackage>();
