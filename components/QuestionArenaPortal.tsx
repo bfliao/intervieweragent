@@ -338,7 +338,7 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
                 Storyline Processor
               </p>
               <p className="text-xs text-slate-400">
-                Raw teammate scenario → manager persona + hidden-fact config.
+                Prep-time raw scenario → HR/team/source persona + hidden-fact config.
               </p>
             </div>
             <button

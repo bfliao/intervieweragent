@@ -1,6 +1,6 @@
 # Question Arena
 
-Question Arena is an internal testing portal for building ambiguity-based candidate assessments. The current MVP lets the team process a raw teammate storyline into a structured scenario config, edit the interview answer prompt, run a 5-question Q&A with a simulated manager, and inspect what hidden context the candidate earned.
+Question Arena is an internal testing portal for building ambiguity-based candidate assessments. The current MVP lets the team process a raw teammate storyline into a structured scenario config, edit the interview answer prompt, run a 5-question Q&A with a simulated HR/team/manager source, and inspect what hidden context the candidate earned.
 
 ## Tech Stack
 
@@ -45,6 +45,8 @@ OPENAI_MODEL=qwen2.5-32b
 
 The current hackathon model endpoint is an OpenAI-compatible chat-completions endpoint. It does not fetch online by itself. If a scenario needs web context, add that context to the raw storyline first or build a server-side retrieval step that appends fetched evidence before calling the scenario processor.
 
+The storyline processor is a prep-time alignment layer. It can be slow. For the final demo, use a reviewed, saved ScenarioConfig rather than depending on live generation.
+
 ## Project Structure
 
 ```txt
@@ -76,7 +78,7 @@ assets/
 The current app uses a deterministic mock answerer:
 
 1. Teammate writes a raw storyline in any reasonable format.
-2. `/api/question-arena/process-scenario` converts it into `ScenarioConfig` JSON using the scenario processor prompt and local manager archetypes.
+2. `/api/question-arena/process-scenario` converts it into `ScenarioConfig` JSON using the scenario processor prompt and local persona archetypes.
 3. Candidate asks a question.
 4. The gatekeeper in `lib/questionArena/answerer.ts` decides what facts were earned.
 5. The manager persona answers using approved facts only.
@@ -89,7 +91,7 @@ The final report uses `/api/question-arena/evaluate`. It keeps weighted informat
 ## Team Workflow
 
 - Scenario owners edit or add JSON files in `data/scenarios/`.
-- Storyline owners can paste raw notes into the Storyline Processor, then review the generated ScenarioConfig before applying it.
+- Storyline owners can paste raw notes into the Storyline Processor, then review the generated ScenarioConfig before applying it. The raw input can be bullets, transcript notes, JSON, product tickets, bug reports, HR notes, or another rough draft format.
 - Prompt owners edit files in `prompts/`.
 - UI/runtime owners work in `components/QuestionArenaPortal.tsx` and `lib/questionArena/`.
 - Keep scenario config, answerer prompt, and scoring logic separate so teammates do not overwrite each other.

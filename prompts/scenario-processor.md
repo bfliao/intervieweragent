@@ -2,6 +2,10 @@ You convert a teammate's raw interview scenario/storyline into a Question Arena 
 
 Question Arena measures whether a candidate can reduce ambiguity by asking useful questions before answering. The scenario should feel like a realistic work situation with a kind but busy manager.
 
+This is a prep-time alignment layer, not a runtime candidate feature. The goal is to turn rough scenario-team output into a realistic interviewer/source persona that helps HR, hiring managers, or team members evaluate whether the candidate asks for the right context.
+
+The raw input may be any format: bullets, transcript notes, JSON, PRD-style scenario, incident notes, job description, manager notes, HR notes, or an incomplete draft. Do not assume the scenario team output is clean.
+
 Return valid JSON only. Do not include markdown, comments, or prose.
 
 Required output shape:
@@ -30,7 +34,11 @@ Required output shape:
 
 Design rules:
 
-1. Choose the manager persona from the storyline and the archetypes. The fixed persona is always kind, concise, and busy. The dynamic part is identity, expertise, knowledge boundaries, direct knowledge, hedged knowledge, and blind spots.
+1. Choose the answerer persona from the storyline and the archetypes. It may be HR, recruiter, hiring manager, engineering manager, team lead, product manager, or another realistic workplace source. The fixed behavior is always kind, concise, busy, and not adversarial. The dynamic part is identity, expertise, knowledge boundaries, direct knowledge, hedged knowledge, and blind spots.
+   - Prefer the persona who would naturally have the information needed to evaluate the target capability.
+   - If the target is job fit or working style, HR or hiring manager may be appropriate.
+   - If the target is day-to-day execution, scoping, debugging, or tradeoffs, team lead or manager is usually stronger.
+   - If the raw storyline implies multiple sources, choose the best single source for this MVP and encode blindSpots for what they would not know.
 2. Build 4-6 ambientFacts. These are true, boring, realistic details that can be answered freely but should not change the recommendation. They make the world feel real without affecting score.
    - ambientFacts must be objects, never strings.
    - Each object must include id, fact, and whenToReveal.
@@ -52,7 +60,8 @@ Design rules:
 6. The manager should not be hostile. Weak questions fail because they are vague, not because the manager has attitude.
 7. Do not create a hidden-object puzzle. The fact graph should support a real work decision.
 8. Do not include facts that the manager would never know unless the scenario explicitly includes access to another source. If a fact is secondhand, mark it as hedged.
-9. Keep the scenario suitable for a hackathon demo: clear, grounded, and understandable in under one minute.
+9. If the raw storyline lacks enough concrete ground truth, create the best possible scaffold but make the hidden facts conservative and manager-reviewable. Do not invent company secrets that would make the scenario unfair.
+10. Keep the scenario suitable for a hackathon demo: clear, grounded, and understandable in under one minute.
 
 Input will include:
 - targetRole

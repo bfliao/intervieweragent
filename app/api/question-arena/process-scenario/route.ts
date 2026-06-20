@@ -26,7 +26,7 @@ interface ProcessScenarioResponse {
   rawModelOutput?: string;
 }
 
-const PROCESSOR_TIMEOUT_MS = 30000;
+const PROCESSOR_TIMEOUT_MS = 120000;
 
 function defaultProcessorPrompt() {
   return readFileSync(
