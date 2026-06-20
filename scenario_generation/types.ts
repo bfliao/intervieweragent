@@ -14,6 +14,19 @@ export interface PipelineInput {
   teamInput: DesiredCoworker[];
 }
 
+/** A real public postmortem, crawled into scenario_generation/data/incidents.json. */
+export interface Incident {
+  id: string;
+  title: string;
+  source: string;
+  company: string;
+  product: string;
+  categories: string[];
+  keywords: string[];
+  summary: string;
+  description: string;
+}
+
 export interface Scenario {
   id: string;
   /** The ambiguous work scenario presented to the candidate. */
@@ -22,6 +35,12 @@ export interface Scenario {
   focusAreas: string[];
   /** Echo of the inputs this scenario was derived from. */
   derivedFrom: PipelineInput;
+  /** The real incident this scenario was grounded on, if any. */
+  groundedOn?: {
+    incidentId: string;
+    title: string;
+    source: string;
+  };
   createdAt: string;
 }
 

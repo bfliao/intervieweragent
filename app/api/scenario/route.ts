@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { generateScenario } from "@/scenario_generation/scenario";
-import type { DesiredCoworker, PipelineInput } from "@/scenario_generation/types";
+import { getIncident, randomIncident } from "@/scenario_generation/incidents";
+import type {
+  DesiredCoworker,
+  Incident,
+  PipelineInput,
+} from "@/scenario_generation/types";
 
 export const runtime = "nodejs";
 
@@ -48,8 +53,31 @@ export async function POST(req: Request) {
     );
   }
 
+  // Ground on a real incident. Priority:
+  //   1. a full `incident` object (e.g. from the live JD crawl)
+  //   2. an `incidentId` from the local corpus
+  //   3. a random local incident
+  const b = body as { incident?: unknown; incidentId?: unknown };
+  const provided = b.incident as Incident | undefined;
+  const incident =
+    provided && typeof provided.title === "string"
+      ? provided
+      : typeof b.incidentId === "string"
+        ? await getIncident(b.incidentId)
+        : await randomIncident();
+
+  if (!incident) {
+    return NextResponse.json(
+      {
+        error:
+          "No incident to ground on. Provide an `incident` (from /api/crawl) or an `incidentId`.",
+      },
+      { status: 400 }
+    );
+  }
+
   try {
-    const scenario = await generateScenario(input);
+    const scenario = await generateScenario(input, incident);
     return NextResponse.json({ scenario });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
