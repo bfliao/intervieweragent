@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2,
   ClipboardList,
+  Download,
   Keyboard,
   MessageSquare,
   Mic,
@@ -331,6 +332,69 @@ function scenarioConfigFromAssessment(
       "Ask targeted questions to establish impact, evidence, likely boundary/change, and the next immediate action.",
     critique: critique || undefined,
   };
+}
+
+function downloadTraceJson(
+  scenario: ScenarioConfig,
+  messages: Message[],
+  unlockedFactIds: string[],
+  finalRecommendation: string,
+  report: ValidatorReport | null
+) {
+  const trace = {
+    exportedAt: new Date().toISOString(),
+    scenario: {
+      id: scenario.id,
+      title: scenario.title,
+      role: scenario.role,
+      candidatePrompt: scenario.candidatePrompt,
+      todos: scenario.todos,
+      scope: scenario.scope,
+      maxQuestions: scenario.maxQuestions,
+      persona: scenario.persona,
+    },
+    conversation: messages.map((m, i) => ({
+      turn: Math.floor(i / 2) + 1,
+      role: m.role,
+      content: m.content,
+    })),
+    unlockedFactIds,
+    hiddenFacts: scenario.hiddenFacts.map((f) => ({
+      id: f.id,
+      title: f.title,
+      fact: f.fact,
+      unlocked: unlockedFactIds.includes(f.id),
+    })),
+    finalRecommendation,
+    report: report
+      ? {
+          percent: report.deterministic.percent,
+          label: report.assessment.label,
+          summary: report.assessment.summary,
+          signalBreakdown: report.assessment.signalBreakdown,
+          strengths: report.assessment.strengths,
+          concerns: report.assessment.concerns,
+          evidence: report.assessment.evidence,
+          finalRecommendationAssessment:
+            report.assessment.finalRecommendationAssessment,
+          nextInterviewFocus: report.assessment.nextInterviewFocus,
+          modelUsed: report.modelUsed,
+          source: report.source,
+        }
+      : null,
+  };
+
+  const blob = new Blob([JSON.stringify(trace, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `interview-trace-${scenario.id}-${Date.now()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 function managerOpeningMessage() {
@@ -669,6 +733,7 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
   const questionInputRef = useRef<HTMLInputElement | null>(null);
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
   const audioRef = useRef<AudioBufferSourceNode | null>(null);
+  const submitPanelRef = useRef<HTMLDivElement | null>(null);
 
   const candidateQuestionCount = messages.filter(
     (message) => message.role === "candidate"
@@ -727,12 +792,10 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
   const ticketRows = useMemo(() => taskTicketRows(scenario), [scenario]);
   const progressIndex =
     interviewPhase === "submitted"
-      ? 3
-      : interviewPhase === "next_step"
-        ? 2
-        : interviewPhase === "workspace"
-          ? 1
-          : 0;
+      ? 2
+      : interviewPhase === "workspace"
+        ? 1
+        : 0;
   const pageClassName = devMode
     ? "min-h-screen p-4"
     : "min-h-screen overflow-x-hidden bg-[linear-gradient(155deg,#edecea_0%,#e7e8eb_55%,#e9e7e4_100%)] px-4 py-7 text-[#17171c]";
@@ -952,7 +1015,12 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
     const text = question.trim();
     if (!text || !canAskQuestions || loadingAnswer) return;
 
+    const questionsBeforeAsk = questionsLeft;
     setQuestion("");
+    setMessages((current) => [
+      ...current,
+      { role: "candidate", content: text },
+    ]);
     setLoadingAnswer(true);
 
     try {
@@ -997,15 +1065,11 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
 
       setMessages((current) => [
         ...current,
-        { role: "candidate", content: text },
         { role: "manager", content: answer },
       ]);
       setUnlockedFactIds(nextUnlocked);
       setLastDecision(decision);
       setReport(null);
-      if (questionsLeft <= 1) {
-        setInterviewPhase("next_step");
-      }
       void speakManagerAnswer(answer);
     } catch (error) {
       setQuestion(text);
@@ -1016,11 +1080,7 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
   }
 
   async function generateReport() {
-    const nextStep = finalRecommendation.trim();
-    if (!nextStep) {
-      setStatus("Write your next immediate step before submitting.");
-      return;
-    }
+    const nextStep = finalRecommendation.trim() || "(not provided)";
     if (assessmentUnavailable) {
       setStatus("Assessment link unavailable.");
       return;
@@ -1166,7 +1226,9 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
         setTranscript("");
         void (async () => {
           const q = text;
+          const questionsBeforeAsk = questionsLeft;
           setQuestion("");
+          setMessages((current) => [...current, { role: "candidate", content: q }]);
           setLoadingAnswer(true);
           try {
             let decision: GatekeeperDecision;
@@ -1188,13 +1250,10 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
               setStatus("Answered with deterministic mock.");
             }
             const nextUnlocked = Array.from(new Set([...unlockedFactIds, ...decision.unlockedFactIds]));
-            setMessages((current) => [...current, { role: "candidate", content: q }, { role: "manager", content: answer }]);
+            setMessages((current) => [...current, { role: "manager", content: answer }]);
             setUnlockedFactIds(nextUnlocked);
             setLastDecision(decision);
             setReport(null);
-            if (questionsLeft <= 1) {
-              setInterviewPhase("next_step");
-            }
             void speakManagerAnswer(answer);
           } catch (error) {
             setQuestion(q);
@@ -1262,8 +1321,8 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
         </div>
       ) : (
         <div className="mx-auto mb-5 w-full max-w-[600px]">
-          <div className="grid grid-cols-4 gap-2 rounded-[28px] border border-white/75 bg-white/55 px-5 py-3 shadow-[0_10px_30px_rgba(38,38,54,.10),inset_0_1px_0_rgba(255,255,255,.85)] backdrop-blur-2xl">
-            {["Brief", "Investigate", "Decide", "Done"].map((label, index) => (
+          <div className="grid grid-cols-3 gap-2 rounded-[28px] border border-white/75 bg-white/55 px-5 py-3 shadow-[0_10px_30px_rgba(38,38,54,.10),inset_0_1px_0_rgba(255,255,255,.85)] backdrop-blur-2xl">
+            {["Brief", "Investigate", "Done"].map((label, index) => (
               <div key={label}>
                 <div
                   className={`h-1 rounded-full transition ${
@@ -1739,56 +1798,16 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
                         ? `${scenario.persona.name} answers what you ask — keep questions specific.`
                         : "Out of questions — write your next immediate step."}
                     </p>
-                    <button
-                      type="button"
-                      onClick={moveToNextStep}
-                      className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-[14px] border border-white/75 bg-white/70 px-5 py-3.5 text-[15px] font-semibold text-[#17171c] shadow-[0_10px_30px_rgba(38,38,54,.10)] transition hover:-translate-y-0.5"
-                    >
-                      Write my next immediate step →
-                    </button>
-                  </div>
-                )}
-
-                {interviewPhase === "next_step" && (
-                  <div className="rounded-[28px] border border-white/75 bg-white/55 p-8 shadow-[0_24px_60px_rgba(38,38,54,.13),inset_0_1px_0_rgba(255,255,255,.85)] backdrop-blur-2xl">
-                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#6e6e78]">
-                      Decide
-                    </p>
-                    <h2 className="mt-3 text-[21px] font-bold tracking-[-0.02em] text-[#17171c]">
-                      Your next immediate step
-                    </h2>
-                    <div className="my-4 flex max-w-[90%] items-end gap-3">
-                      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/75 bg-white/70 text-xs font-bold text-[#3a3a42]">
-                        {scenario.persona.name.slice(0, 1).toUpperCase()}
-                      </div>
-                      <div className="rounded-2xl rounded-bl-md border border-white/75 bg-white/60 px-4 py-3 text-[14.5px] font-medium leading-6 text-[#3a3a42]">
-                        Based on what you've learned, what's the first concrete
-                        thing you'd do? In your own words.
-                      </div>
-                    </div>
-                    <textarea
-                      value={finalRecommendation}
-                      onChange={(event) => setFinalRecommendation(event.target.value)}
-                      placeholder="e.g. Reproduce locally by invoking the task with the observed payload and inspect the boundary where it is serialized..."
-                      className="min-h-[130px] w-full resize-y rounded-[15px] border border-black/10 bg-white/50 px-4 py-3 text-[14.5px] font-medium leading-6 text-[#17171c] outline-none transition placeholder:text-[#a6a6b0] focus:border-black/30 focus:bg-white/70"
-                    />
-                    {questionsLeft > 0 && (
+                    {questionsLeft <= 0 && (
                       <button
                         type="button"
-                        onClick={() => setInterviewPhase("workspace")}
-                        className="mt-3 w-full rounded-[14px] bg-transparent px-5 py-3 text-[15px] font-semibold text-[#6e6e78] transition hover:bg-white/40"
+                        disabled={loadingEvaluation}
+                        onClick={generateReport}
+                        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[14px] bg-[#17171c] px-5 py-3.5 text-[15px] font-semibold text-white transition hover:-translate-y-0.5 hover:bg-black disabled:bg-black/10 disabled:text-black/30"
                       >
-                        Ask another question
+                        {loadingEvaluation ? "Submitting..." : "Next step"}
                       </button>
                     )}
-                    <button
-                      type="button"
-                      onClick={generateReport}
-                      disabled={loadingEvaluation || !finalRecommendation.trim()}
-                      className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-[14px] bg-[#17171c] px-5 py-3.5 text-[15px] font-semibold text-white transition hover:-translate-y-0.5 hover:bg-black disabled:bg-black/10 disabled:text-black/30"
-                    >
-                      {loadingEvaluation ? "Submitting..." : "Submit assessment"}
-                    </button>
                   </div>
                 )}
 
@@ -1826,6 +1845,22 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
                           </span>
                         </div>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          downloadTraceJson(
+                            scenario,
+                            messages,
+                            unlockedFactIds,
+                            finalRecommendation,
+                            report
+                          )
+                        }
+                        className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-[14px] bg-[#17171c] px-5 py-3.5 text-[15px] font-semibold text-white transition hover:-translate-y-0.5 hover:bg-black"
+                      >
+                        <Send className="h-4 w-4" />
+                        Send results to hiring team
+                      </button>
                     </div>
 
                     {report && (
@@ -2612,11 +2647,12 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
         )}
 
         <div
+          ref={submitPanelRef}
           className={
             devMode
               ? "border-t border-slate-800 bg-slate-950/60 p-4"
               : `border-t border-[#efeafa] bg-white p-5 ${
-                  interviewPhase === "next_step" || interviewPhase === "submitted"
+                  interviewPhase === "submitted" || (interviewPhase === "workspace" && questionsLeft <= 0)
                     ? "block"
                     : "hidden"
                 }`
@@ -2647,15 +2683,6 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
             }
             placeholder="My next step would be..."
           />
-          {!devMode && questionsLeft > 0 && interviewPhase === "next_step" && (
-            <button
-              type="button"
-              onClick={() => setInterviewPhase("workspace")}
-              className="mt-3 w-full rounded-2xl border border-[#eadffb] bg-white px-4 py-3 text-sm font-black text-[#7c5cfc]"
-            >
-              Ask another question
-            </button>
-          )}
           <button
             onClick={generateReport}
             disabled={loadingEvaluation || !finalRecommendation.trim()}
@@ -2773,6 +2800,22 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
             <p className="mt-4 text-xs text-slate-500">
               Validator source: {report.modelUsed} ({report.source})
             </p>
+            <button
+              type="button"
+              onClick={() =>
+                downloadTraceJson(
+                  scenario,
+                  messages,
+                  unlockedFactIds,
+                  finalRecommendation,
+                  report
+                )
+              }
+              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md bg-emerald-300 px-4 py-3 text-sm font-bold text-slate-950"
+            >
+              <Download className="h-4 w-4" />
+              Download interview trace
+            </button>
           </div>
         )}
         </div>
