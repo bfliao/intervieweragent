@@ -47,6 +47,8 @@ export default function QuestionArenaPortal({
   );
   const [status, setStatus] = useState("Ready.");
   const [report, setReport] = useState<EvaluationReport | null>(null);
+  const [answerMode, setAnswerMode] = useState<"model" | "mock">("model");
+  const [loadingAnswer, setLoadingAnswer] = useState(false);
 
   const questionsLeft = Math.max(scenario.maxQuestions - messages.length / 2, 0);
   const unlockedFacts = useMemo(
@@ -85,26 +87,67 @@ export default function QuestionArenaPortal({
     }
   }
 
-  function askManager(event: React.FormEvent<HTMLFormElement>) {
+  async function askManager(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const text = question.trim();
-    if (!text || questionsLeft <= 0) return;
+    if (!text || questionsLeft <= 0 || loadingAnswer) return;
 
-    const decision = gatekeepQuestion(text, scenario, unlockedFactIds);
-    const answer = generateManagerAnswer(scenario, decision);
-    const nextUnlocked = Array.from(
-      new Set([...unlockedFactIds, ...decision.unlockedFactIds])
-    );
-
-    setMessages((current) => [
-      ...current,
-      { role: "candidate", content: text },
-      { role: "manager", content: answer },
-    ]);
     setQuestion("");
-    setUnlockedFactIds(nextUnlocked);
-    setLastDecision(decision);
-    setReport(null);
+    setLoadingAnswer(true);
+
+    try {
+      let decision: GatekeeperDecision;
+      let answer: string;
+
+      if (answerMode === "model") {
+        const res = await fetch("/api/question-arena/answer", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            scenario,
+            question: text,
+            unlockedFactIds,
+            answerPrompt,
+          }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const data = (await res.json()) as {
+          decision: GatekeeperDecision;
+          answer: string;
+          modelUsed?: string;
+          warning?: string;
+        };
+        decision = data.decision;
+        answer = data.answer;
+        setStatus(
+          data.warning
+            ? data.warning
+            : `Answered with ${data.modelUsed || "model endpoint"}.`
+        );
+      } else {
+        decision = gatekeepQuestion(text, scenario, unlockedFactIds);
+        answer = generateManagerAnswer(scenario, decision);
+        setStatus("Answered with deterministic mock.");
+      }
+
+      const nextUnlocked = Array.from(
+        new Set([...unlockedFactIds, ...decision.unlockedFactIds])
+      );
+
+      setMessages((current) => [
+        ...current,
+        { role: "candidate", content: text },
+        { role: "manager", content: answer },
+      ]);
+      setUnlockedFactIds(nextUnlocked);
+      setLastDecision(decision);
+      setReport(null);
+    } catch (error) {
+      setQuestion(text);
+      setStatus(error instanceof Error ? error.message : "Answer failed.");
+    } finally {
+      setLoadingAnswer(false);
+    }
   }
 
   function generateReport() {
@@ -174,6 +217,20 @@ export default function QuestionArenaPortal({
             className="mt-2 h-44 w-full resize-y rounded-md border border-slate-700 bg-background p-3 text-sm leading-relaxed outline-none focus:border-emerald-300"
             spellCheck={false}
           />
+        </label>
+
+        <label className="mb-4 block text-sm font-semibold text-slate-300">
+          Answer Backend
+          <select
+            value={answerMode}
+            onChange={(event) =>
+              setAnswerMode(event.target.value as "model" | "mock")
+            }
+            className="mt-2 w-full rounded-md border border-slate-700 bg-background px-3 py-2 text-sm"
+          >
+            <option value="model">Model endpoint</option>
+            <option value="mock">Deterministic mock</option>
+          </select>
         </label>
 
         <div className="grid grid-cols-3 gap-2">
@@ -266,15 +323,15 @@ export default function QuestionArenaPortal({
             <input
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
-              disabled={questionsLeft <= 0}
+              disabled={questionsLeft <= 0 || loadingAnswer}
               placeholder="Ask one focused question..."
               className="rounded-md border border-slate-700 bg-surface px-3 py-2 text-sm outline-none focus:border-emerald-300 disabled:opacity-50"
             />
             <button
-              disabled={questionsLeft <= 0}
+              disabled={questionsLeft <= 0 || loadingAnswer}
               className="rounded-md bg-emerald-300 px-4 py-2 text-sm font-bold text-slate-950 disabled:opacity-50"
             >
-              Ask
+              {loadingAnswer ? "Asking..." : "Ask"}
             </button>
           </div>
         </form>

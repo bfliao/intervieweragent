@@ -24,7 +24,24 @@ Question Arena is an internal testing portal for building ambiguity-based candid
 
 3. Open [http://localhost:3000](http://localhost:3000).
 
-No API key is required for the current mock portal.
+The app can run in two answer modes:
+
+- `Model endpoint`: calls an OpenAI-compatible endpoint through `/api/question-arena/answer`.
+- `Deterministic mock`: runs the local gatekeeper/persona fallback only.
+
+For the current hackathon endpoint, copy `.env.example` to `.env.local`:
+
+```bash
+cp .env.example .env.local
+```
+
+Current expected values:
+
+```bash
+OPENAI_API_KEY=dummy
+OPENAI_BASE_URL=https://c5b6-136-24-140-216.ngrok-free.app/v1
+OPENAI_MODEL=qwen2.5-32b
+```
 
 ## Project Structure
 
@@ -58,7 +75,7 @@ The current app uses a deterministic mock answerer:
 3. The manager persona answers using approved facts only.
 4. The report computes weighted information gain from unlocked hidden facts.
 
-The prompt files define the intended model-backed behavior for the next integration step.
+When `Model endpoint` is selected, the same deterministic gatekeeper still decides what facts were earned. The model only writes the manager response using approved facts, so scoring stays stable while the answer sounds more natural.
 
 ## Team Workflow
 
