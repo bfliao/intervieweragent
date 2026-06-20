@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import PipelineApp from "@/components/PipelineApp";
 import ScenariosTab from "@/components/ScenariosTab";
 import JobsTab from "@/components/JobsTab";
@@ -46,10 +46,16 @@ const TAB_LABELS: Record<Tab, (counts: Record<Tab, number>) => string> = {
 
 export default function Home() {
   const [tab, setTab] = useState<Tab>("playground");
-  const [saved, setSaved] = useState<SavedScenario[]>(loadSaved);
-  const [jobs, setJobs] = useState<SavedJob[]>(loadJobs);
-  const [candidates, setCandidates] = useState<Candidate[]>(loadCandidates);
+  const [saved, setSaved] = useState<SavedScenario[]>([]);
+  const [jobs, setJobs] = useState<SavedJob[]>([]);
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [activeJob, setActiveJob] = useState<SavedJob | null>(null);
+
+  useEffect(() => {
+    setSaved(loadSaved());
+    setJobs(loadJobs());
+    setCandidates(loadCandidates());
+  }, []);
 
   const counts: Record<Tab, number> = {
     playground: 0,
