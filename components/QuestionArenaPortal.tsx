@@ -16,6 +16,8 @@ import type {
   Message,
   QuestionClassification,
   ScenarioConfig,
+  ScenarioCritique,
+  CriterionNode,
   ValidatorReport,
 } from "@/lib/questionArena/types";
 
@@ -57,6 +59,16 @@ interface StoredAssessmentScenario {
     teamInput?: Array<{
       memberName?: string;
       description?: string;
+    }>;
+  };
+  critique?: {
+    scenarioId: string;
+    criteria: Array<{
+      id: string;
+      evidence: string;
+      tags: string[];
+      score: number;
+      followups: unknown[];
     }>;
   };
 }
@@ -132,6 +144,35 @@ function firstAssessmentScenario(stored: StoredAssessmentPackage) {
   } satisfies StoredAssessmentScenario;
 }
 
+function flattenCriteria(criteria: CriterionNode[], depth = 0): CriterionNode[] {
+  const result: CriterionNode[] = [];
+  for (const c of criteria) {
+    result.push(c);
+    if (c.followups?.length) {
+      result.push(...flattenCriteria(c.followups, depth + 1));
+    }
+  }
+  return result;
+}
+
+function critiqueToHiddenFacts(critique: ScenarioCritique) {
+  const flat = flattenCriteria(critique.criteria as CriterionNode[]);
+  return flat
+    .filter((c) => c.evidence?.trim())
+    .map((c, index) => ({
+      id: c.id || `critique_${index}`,
+      title: c.tags?.slice(0, 3).join(", ") || c.evidence.slice(0, 50),
+      fact: c.evidence,
+      category: c.tags?.[0] || "evidence",
+      weight: c.score || 0.5,
+      knowledgeLevel: "direct" as const,
+      unlockTriggers: c.tags || [],
+      requiresSpecificity: false,
+      sampleResponse: c.evidence,
+      whyItMatters: `This evidence (weight ${c.score}) is part of the scoring rubric.`,
+    }));
+}
+
 function scenarioConfigFromAssessment(
   stored: StoredAssessmentPackage,
   fallbackRole: string
@@ -149,6 +190,73 @@ function scenarioConfigFromAssessment(
       [member.memberName, member.description].filter(Boolean).join(": ")
     )
     .filter(Boolean);
+
+  // Build hiddenFacts from critique if available, otherwise use generic fallbacks
+  const critique = item.critique as ScenarioCritique | undefined;
+  const critiqueHiddenFacts = critique?.criteria?.length
+    ? critiqueToHiddenFacts(critique)
+    : [];
+
+  const hiddenFacts = critiqueHiddenFacts.length > 0
+    ? critiqueHiddenFacts
+    : [
+        {
+          id: "impact_scope",
+          title: "Impact and scope",
+          fact: "The candidate should ask who or what is affected before proposing a fix.",
+          category: "scope",
+          weight: 1,
+          knowledgeLevel: "direct" as const,
+          unlockTriggers: ["who", "affected", "impact", "scope", "users", "customers"],
+          requiresSpecificity: false,
+          sampleResponse:
+            "The first useful thing is to establish impact and scope before jumping to a fix.",
+          whyItMatters:
+            "Good incident work starts by understanding blast radius.",
+        },
+        {
+          id: "evidence",
+          title: "Evidence and reproduction",
+          fact: "The candidate should ask for logs, repro path, timing, and concrete evidence.",
+          category: "debugging",
+          weight: 1,
+          knowledgeLevel: "direct" as const,
+          unlockTriggers: ["logs", "reproduce", "evidence", "trace", "error", "when"],
+          requiresSpecificity: false,
+          sampleResponse:
+            "I would anchor on the concrete evidence: logs, timing, repro steps, and what changed around the failure.",
+          whyItMatters:
+            "This rewards evidence-driven debugging rather than guessing.",
+        },
+        {
+          id: "change_or_boundary",
+          title: "Change or system boundary",
+          fact: "The candidate should inspect recent changes and integration/data-shape boundaries.",
+          category: "root-cause",
+          weight: 1,
+          knowledgeLevel: "hedged" as const,
+          unlockTriggers: ["changed", "deploy", "release", "dependency", "payload", "type", "boundary"],
+          requiresSpecificity: false,
+          sampleResponse:
+            "A useful angle is whether a recent change or boundary mismatch changed what the downstream system receives.",
+          whyItMatters:
+            "Many ambiguous failures come from boundary mismatches, not the visible symptom alone.",
+        },
+        {
+          id: "next_step",
+          title: "Next immediate step",
+          fact: "The candidate should choose a high-signal next action under uncertainty.",
+          category: "ownership",
+          weight: 1,
+          knowledgeLevel: "direct" as const,
+          unlockTriggers: ["next", "priority", "mitigation", "rollback", "risk", "deadline"],
+          requiresSpecificity: false,
+          sampleResponse:
+            "I care about the next high-signal action you would take, not a perfect final answer immediately.",
+          whyItMatters:
+            "This tests ownership and practical judgment.",
+        },
+      ];
 
   return {
     id: item.id || stored.id,
@@ -195,64 +303,7 @@ function scenarioConfigFromAssessment(
         whenToReveal: ["focus", "skill", "evaluate", "looking for"],
       },
     ],
-    hiddenFacts: [
-      {
-        id: "impact_scope",
-        title: "Impact and scope",
-        fact: "The candidate should ask who or what is affected before proposing a fix.",
-        category: "scope",
-        weight: 1,
-        knowledgeLevel: "direct",
-        unlockTriggers: ["who", "affected", "impact", "scope", "users", "customers"],
-        requiresSpecificity: true,
-        sampleResponse:
-          "The first useful thing is to establish impact and scope before jumping to a fix.",
-        whyItMatters:
-          "Good incident work starts by understanding blast radius.",
-      },
-      {
-        id: "evidence",
-        title: "Evidence and reproduction",
-        fact: "The candidate should ask for logs, repro path, timing, and concrete evidence.",
-        category: "debugging",
-        weight: 1,
-        knowledgeLevel: "direct",
-        unlockTriggers: ["logs", "reproduce", "evidence", "trace", "error", "when"],
-        requiresSpecificity: true,
-        sampleResponse:
-          "I would anchor on the concrete evidence: logs, timing, repro steps, and what changed around the failure.",
-        whyItMatters:
-          "This rewards evidence-driven debugging rather than guessing.",
-      },
-      {
-        id: "change_or_boundary",
-        title: "Change or system boundary",
-        fact: "The candidate should inspect recent changes and integration/data-shape boundaries.",
-        category: "root-cause",
-        weight: 1,
-        knowledgeLevel: "hedged",
-        unlockTriggers: ["changed", "deploy", "release", "dependency", "payload", "type", "boundary"],
-        requiresSpecificity: true,
-        sampleResponse:
-          "A useful angle is whether a recent change or boundary mismatch changed what the downstream system receives.",
-        whyItMatters:
-          "Many ambiguous failures come from boundary mismatches, not the visible symptom alone.",
-      },
-      {
-        id: "next_step",
-        title: "Next immediate step",
-        fact: "The candidate should choose a high-signal next action under uncertainty.",
-        category: "ownership",
-        weight: 1,
-        knowledgeLevel: "direct",
-        unlockTriggers: ["next", "priority", "mitigation", "rollback", "risk", "deadline"],
-        requiresSpecificity: true,
-        sampleResponse:
-          "I care about the next high-signal action you would take, not a perfect final answer immediately.",
-        whyItMatters:
-          "This tests ownership and practical judgment.",
-      },
-    ],
+    hiddenFacts,
     trapAssumptions: [
       {
         id: "visible_error_is_full_answer",
@@ -265,6 +316,7 @@ function scenarioConfigFromAssessment(
     ],
     idealRecommendation:
       "Ask targeted questions to establish impact, evidence, likely boundary/change, and the next immediate action.",
+    critique: critique || undefined,
   };
 }
 

@@ -109,11 +109,23 @@ export async function llmGatekeepQuestion(
   const prompt = options?.gatekeeperPrompt || loadGatekeeperPrompt();
   const client = new OpenAI({ apiKey, baseURL });
 
-  const payload = {
+  // Build critique evidence summary for the LLM if available
+  const critiqueEvidence = scenario.critique?.criteria?.length
+    ? scenario.critique.criteria.map((c) => ({
+        id: c.id,
+        evidence: c.evidence,
+        tags: c.tags,
+        weight: c.score,
+      }))
+    : undefined;
+
+  const payload: Record<string, unknown> = {
     scenario: {
       title: scenario.title,
       role: scenario.role,
       candidatePrompt: scenario.candidatePrompt,
+      todos: scenario.todos,
+      scope: scenario.scope,
       persona: {
         name: scenario.persona.name,
         role: scenario.persona.role,
@@ -136,11 +148,15 @@ export async function llmGatekeepQuestion(
     candidateQuestion: question,
   };
 
+  if (critiqueEvidence) {
+    payload.critiqueEvidence = critiqueEvidence;
+  }
+
   try {
     const completion = await client.chat.completions.create({
       model,
       temperature: 0.1,
-      max_tokens: 300,
+      max_tokens: 400,
       messages: [
         { role: "system", content: prompt },
         { role: "user", content: JSON.stringify(payload, null, 2) },

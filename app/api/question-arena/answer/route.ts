@@ -110,12 +110,22 @@ export async function POST(req: Request) {
           content: JSON.stringify(
             {
               managerPersona: scenario.persona,
+              scenarioContext: {
+                title: scenario.title,
+                candidatePrompt: scenario.candidatePrompt,
+                todos: scenario.todos,
+                scope: scenario.scope,
+              },
               candidateQuestion: question,
               gatekeeperDecision: decision,
               approvedContextOnly: context,
+              critiqueEvidence: scenario.critique?.criteria?.map((c) => ({
+                evidence: c.evidence,
+                tags: c.tags,
+              })),
               fallbackAnswer,
               instruction:
-                "Write the manager's answer in 1-3 concise sentences. Use only approvedContextOnly and the fallbackAnswer. If no hidden or ambient facts were approved, do not invent details.",
+                "Write the manager's answer in 1-3 concise sentences. Use approvedContextOnly, the scenario context, and critique evidence to give a grounded, natural answer. If no hidden or ambient facts were approved, do not invent details.",
             },
             null,
             2

@@ -43,6 +43,19 @@ export interface TrapAssumption {
   howToDisprove: string;
 }
 
+export interface CriterionNode {
+  id: string;
+  evidence: string;
+  tags: string[];
+  score: number;
+  followups: CriterionNode[];
+}
+
+export interface ScenarioCritique {
+  scenarioId: string;
+  criteria: CriterionNode[];
+}
+
 export interface ScenarioConfig {
   id: string;
   title: string;
@@ -56,6 +69,7 @@ export interface ScenarioConfig {
   hiddenFacts: HiddenFact[];
   trapAssumptions: TrapAssumption[];
   idealRecommendation: string;
+  critique?: ScenarioCritique;
 }
 
 export interface GatekeeperDecision {
