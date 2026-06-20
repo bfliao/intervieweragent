@@ -660,6 +660,64 @@ export default function PipelineApp({
                 <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-200">
                   {scenario.brief}
                 </p>
+
+                {/* Candidate instructions */}
+                {(scenario.todos?.length > 0 || scenario.scope?.focus?.length > 0) && (
+                  <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-4 space-y-4">
+                    {scenario.todos?.length > 0 && (
+                      <div>
+                        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                          Your tasks
+                        </h4>
+                        <ol className="space-y-1.5 list-none">
+                          {scenario.todos.map((t, i) => (
+                            <li key={i} className="flex gap-2.5 text-sm text-slate-200">
+                              <span className="shrink-0 mt-0.5 font-mono text-xs text-accent">
+                                {String(i + 1).padStart(2, "0")}
+                              </span>
+                              {t}
+                            </li>
+                          ))}
+                        </ol>
+                      </div>
+                    )}
+                    {(scenario.scope?.focus?.length > 0 || scenario.scope?.skip?.length > 0) && (
+                      <div className="flex gap-6">
+                        {scenario.scope.focus.length > 0 && (
+                          <div className="flex-1">
+                            <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                              Focus on
+                            </h4>
+                            <ul className="space-y-1">
+                              {scenario.scope.focus.map((f) => (
+                                <li key={f} className="flex items-center gap-1.5 text-xs text-slate-300">
+                                  <span className="h-1 w-1 rounded-full bg-accent shrink-0" />
+                                  {f}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {scenario.scope.skip.length > 0 && (
+                          <div className="flex-1">
+                            <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                              Skip
+                            </h4>
+                            <ul className="space-y-1">
+                              {scenario.scope.skip.map((s) => (
+                                <li key={s} className="flex items-center gap-1.5 text-xs text-slate-500">
+                                  <span className="h-1 w-1 rounded-full bg-slate-600 shrink-0" />
+                                  {s}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="rounded-full border border-slate-600 bg-background px-2 py-0.5 text-xs font-medium capitalize text-slate-300">
                     {scenario.difficulty}

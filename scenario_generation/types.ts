@@ -30,11 +30,22 @@ export interface Incident {
   description: string;
 }
 
+export interface ScenarioScope {
+  /** Areas the candidate should spend time on. */
+  focus: string[];
+  /** Explicitly out of scope — candidate should not go deep here. */
+  skip: string[];
+}
+
 export interface Scenario {
   id: string;
   /** The ambiguous work scenario presented to the candidate. */
   brief: string;
-  /** What the scenario is designed to probe (high-level). */
+  /** Concrete candidate-facing tasks: what they are being asked to do. */
+  todos: string[];
+  /** What to focus on vs. skip — shown directly to the candidate. */
+  scope: ScenarioScope;
+  /** Internal labels for the hiring panel (not shown to candidate). */
   focusAreas: string[];
   difficulty: Difficulty;
   /** Echo of the inputs this scenario was derived from. */

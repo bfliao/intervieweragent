@@ -42,10 +42,26 @@ Hard requirements:
 - Keep the brief to 1-2 short paragraphs followed by a bullet list of observable
   signals (real + red herrings mixed together — do not label them).
 
+Also produce candidate-facing instructions:
+- "todos": 3-5 concrete tasks the candidate must complete, written as direct
+  prompts (e.g. "Walk us through your diagnostic process step by step",
+  "Identify the most likely root cause and explain your reasoning").
+  Tasks should match the difficulty level — junior tasks are simpler and
+  more guided; senior tasks require open-ended system reasoning.
+- "scope.focus": 2-4 short phrases naming the areas the candidate SHOULD spend
+  time on (e.g. "diagnostic reasoning", "signal prioritization").
+- "scope.skip": 1-3 short phrases naming what is explicitly OUT OF SCOPE
+  (e.g. "writing actual code", "capacity planning", "post-incident review").
+
+"focusAreas" are INTERNAL labels for the hiring panel only — they are NOT
+shown to the candidate. Keep them distinct from "scope.focus".
+
 Return STRICT JSON only:
 {
   "brief": string,
-  "focusAreas": string[]   // 3-6 short labels of what this scenario probes
+  "todos": string[],
+  "scope": { "focus": string[], "skip": string[] },
+  "focusAreas": string[]
 }`;
 
 function buildDraftPrompt(
@@ -104,7 +120,10 @@ function buildCritiquePrompt(draft: ScenarioDraft, difficulty: Difficulty): stri
 BRIEF:
 ${draft.brief}
 
-FOCUS AREAS: ${draft.focusAreas.join(", ")}
+TODOS: ${draft.todos.join(" | ")}
+SCOPE FOCUS: ${draft.scope?.focus?.join(", ")}
+SCOPE SKIP: ${draft.scope?.skip?.join(", ")}
+FOCUS AREAS (internal): ${draft.focusAreas.join(", ")}
 
 Audit this scenario now.`;
 }
@@ -113,9 +132,11 @@ Audit this scenario now.`;
 
 const REVISE_SYSTEM = `You are an expert scenario editor. Fix every listed issue in the draft while preserving the core incident grounding and difficulty level. Do not introduce new systems not in the original incident.
 
-Return STRICT JSON only:
+Return STRICT JSON only — same shape as the original draft:
 {
   "brief": string,
+  "todos": string[],
+  "scope": { "focus": string[], "skip": string[] },
   "focusAreas": string[]
 }`;
 
@@ -128,7 +149,10 @@ function buildRevisePrompt(
 
 ORIGINAL DRAFT:
 Brief: ${draft.brief}
-Focus Areas: ${draft.focusAreas.join(", ")}
+Todos: ${draft.todos.join(" | ")}
+Scope focus: ${draft.scope?.focus?.join(", ")}
+Scope skip: ${draft.scope?.skip?.join(", ")}
+Focus areas: ${draft.focusAreas.join(", ")}
 
 ISSUES TO FIX:
 ${issues.map((i) => `- ${i}`).join("\n")}
@@ -140,6 +164,8 @@ Produce the revised scenario now.`;
 
 interface ScenarioDraft {
   brief: string;
+  todos: string[];
+  scope: { focus: string[]; skip: string[] };
   focusAreas: string[];
 }
 
@@ -187,6 +213,11 @@ export async function generateScenario(
   return {
     id: makeId(),
     brief: draft.brief.trim(),
+    todos: Array.isArray(draft.todos) ? draft.todos.filter(Boolean) : [],
+    scope: {
+      focus: Array.isArray(draft.scope?.focus) ? draft.scope.focus.filter(Boolean) : [],
+      skip: Array.isArray(draft.scope?.skip) ? draft.scope.skip.filter(Boolean) : [],
+    },
     focusAreas: Array.isArray(draft.focusAreas) ? draft.focusAreas : [],
     difficulty,
     derivedFrom: { ...input, difficulty },
