@@ -6,7 +6,7 @@ Date: 2026-06-20
 
 The scenario processor is a prep-time alignment layer. It is not part of the live candidate experience.
 
-Its job is to convert whatever the scenario team produces into a realistic answerer persona plus a structured `ScenarioConfig` that the Q&A agent can use.
+Its job is to convert whatever the scenario team produces into a candidate-facing initial observation, a realistic answerer persona, and a structured `ScenarioConfig` that the Q&A agent can use.
 
 This lets the team collaborate even while the scenario team's final output format is still unknown.
 
@@ -65,6 +65,12 @@ Acceptable inputs include:
 - bullet points
 - transcript notes
 - rough storylines
+- markdown scenario packages
+- initial observations / problem statements
+- crawler output
+- evidence tables
+- tag or knowledge-point tables
+- critique notes from another agent
 - incident reports
 - product tickets
 - bug reports
@@ -74,6 +80,19 @@ Acceptable inputs include:
 - incomplete scenario drafts
 
 The processor should be able to turn rough input into a first-pass config. The result still needs human review.
+
+## Mapping From Scenario Package To Our Runtime
+
+When the scenario team provides a richer markdown package, map it this way:
+
+- Initial observation / problem statement -> `candidatePrompt`
+- Evidence -> `hiddenFacts` or `ambientFacts`
+- Tags / knowledge points -> `category`, `unlockTriggers`, and evaluator language
+- Relevance or quality score -> hidden-fact `weight`
+- Critique notes -> review guidance for improving unfair, overly narrow, or unrealistic scenarios
+- Team/JD/background context -> persona expertise, direct knowledge, hedged knowledge, and blind spots
+
+The candidate should not see the raw evidence table. The answerer should not freely dump the whole markdown. The markdown is compiled into the scenario config, and the gatekeeper still decides what context the candidate earned.
 
 ## Review Checklist
 
@@ -93,7 +112,7 @@ Before using a processed scenario in the demo, check:
 ## Demo Workflow
 
 1. Scenario team provides raw storyline in any format.
-2. Paste it into `Raw Storyline Input`.
+2. Paste it into `Raw Scenario / Markdown Input`.
 3. Set the target role.
 4. Run `Process`.
 5. Review and edit the generated `ScenarioConfig JSON`.

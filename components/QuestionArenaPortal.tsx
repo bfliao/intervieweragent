@@ -338,7 +338,7 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
                 Storyline Processor
               </p>
               <p className="text-xs text-slate-400">
-                Prep-time raw scenario → HR/team/source persona + hidden-fact config.
+                Prep-time scenario markdown → candidate prompt + source persona + hidden-fact config.
               </p>
             </div>
             <button
@@ -361,7 +361,7 @@ This is for an NG SWE work-sample assessment. The scenario should test whether t
           </label>
 
           <label className="mb-3 block text-sm font-semibold text-slate-300">
-            Raw Storyline Input
+            Raw Scenario / Markdown Input
             <textarea
               value={rawStoryline}
               onChange={(event) => setRawStoryline(event.target.value)}

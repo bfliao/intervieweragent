@@ -77,7 +77,7 @@ assets/
 
 The current app uses a deterministic mock answerer:
 
-1. Teammate writes a raw storyline in any reasonable format.
+1. Teammate writes a raw storyline or scenario markdown package in any reasonable format.
 2. `/api/question-arena/process-scenario` converts it into `ScenarioConfig` JSON using the scenario processor prompt and local persona archetypes.
 3. Candidate asks a question.
 4. The gatekeeper in `lib/questionArena/answerer.ts` decides what facts were earned.
@@ -92,7 +92,7 @@ The final report uses `/api/question-arena/evaluate`. It keeps weighted informat
 ## Team Workflow
 
 - Scenario owners edit or add JSON files in `data/scenarios/`.
-- Storyline owners can paste raw notes into the Storyline Processor, then review the generated ScenarioConfig before applying it. The raw input can be bullets, transcript notes, JSON, product tickets, bug reports, HR notes, or another rough draft format.
+- Storyline owners can paste raw notes or scenario markdown packages into the Storyline Processor, then review the generated ScenarioConfig before applying it. The raw input can be bullets, transcript notes, JSON, product tickets, bug reports, HR notes, initial observations, evidence/tag tables, critique notes, crawler output, or another rough draft format.
 - Prompt owners edit files in `prompts/`.
 - UI/runtime owners work in `components/QuestionArenaPortal.tsx` and `lib/questionArena/`.
 - Keep scenario config, answerer prompt, and scoring logic separate so teammates do not overwrite each other.
