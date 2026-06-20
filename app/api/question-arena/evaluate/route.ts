@@ -119,6 +119,19 @@ function normalizeSignalDimension(
   };
 }
 
+function normalizeString(value: unknown, fallback: string) {
+  return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+function normalizeStringArray(value: unknown, fallback: string[]) {
+  if (!Array.isArray(value)) return fallback;
+  const items = value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return items.length > 0 ? items : fallback;
+}
+
 function extractJson(text: string) {
   const trimmed = text.trim();
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) return trimmed;
@@ -126,24 +139,17 @@ function extractJson(text: string) {
   return match?.[0] ?? trimmed;
 }
 
-function normalizeAssessment(value: Partial<ValidatorAssessment>) {
-  const fallbackBreakdown = fallbackAssessment(
-    {
-      percent: 0,
-      label: "Developing ambiguity reducer",
-      unlockedWeight: 0,
-      totalWeight: 0,
-      missedFacts: [],
-    },
-    [],
-    [],
-    ""
-  ).signalBreakdown!;
+function normalizeAssessment(
+  value: Partial<ValidatorAssessment>,
+  deterministic: EvaluationReport,
+  fallback: ValidatorAssessment
+) {
+  const fallbackBreakdown = fallback.signalBreakdown!;
   const breakdown = value.signalBreakdown;
 
   return {
-    label: value.label || "Developing ambiguity reducer",
-    summary: value.summary || "The validator produced an incomplete summary.",
+    label: deterministic.label,
+    summary: normalizeString(value.summary, fallback.summary),
     signalBreakdown: {
       questionQuality: normalizeSignalDimension(
         breakdown?.questionQuality,
@@ -162,15 +168,18 @@ function normalizeAssessment(value: Partial<ValidatorAssessment>) {
         fallbackBreakdown.groundedNextStep
       ),
     },
-    strengths: Array.isArray(value.strengths) ? value.strengths : [],
-    concerns: Array.isArray(value.concerns) ? value.concerns : [],
-    evidence: Array.isArray(value.evidence) ? value.evidence : [],
+    strengths: normalizeStringArray(value.strengths, fallback.strengths),
+    concerns: normalizeStringArray(value.concerns, fallback.concerns),
+    evidence: normalizeStringArray(value.evidence, fallback.evidence),
     finalRecommendationAssessment:
-      value.finalRecommendationAssessment ||
-      "No next-step assessment provided.",
-    nextInterviewFocus: Array.isArray(value.nextInterviewFocus)
-      ? value.nextInterviewFocus
-      : [],
+      normalizeString(
+        value.finalRecommendationAssessment,
+        fallback.finalRecommendationAssessment
+      ),
+    nextInterviewFocus: normalizeStringArray(
+      value.nextInterviewFocus,
+      fallback.nextInterviewFocus
+    ),
   };
 }
 
@@ -187,9 +196,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "scenario is required." }, { status: 400 });
   }
 
-  const deterministic = scoreInformationGain(scenario, unlockedFactIds || []);
-  const unlockedFacts = factsForIds(scenario, unlockedFactIds || []);
+  const safeMessages = Array.isArray(messages) ? messages : [];
+  const safeUnlockedFactIds = Array.isArray(unlockedFactIds)
+    ? unlockedFactIds
+    : [];
+  const safeFinalRecommendation = finalRecommendation || "";
+  const deterministic = scoreInformationGain(scenario, safeUnlockedFactIds);
+  const unlockedFacts = factsForIds(scenario, safeUnlockedFactIds);
   const missedFacts = deterministic.missedFacts;
+  const fallback = fallbackAssessment(
+    deterministic,
+    unlockedFacts,
+    safeMessages,
+    safeFinalRecommendation
+  );
   const baseURL = process.env.OPENAI_BASE_URL;
   const model = process.env.OPENAI_MODEL || "qwen2.5-32b";
   const apiKey = process.env.OPENAI_API_KEY || "dummy";
@@ -197,12 +217,7 @@ export async function POST(req: Request) {
   if (!baseURL) {
     const report: ValidatorReport = {
       deterministic,
-      assessment: fallbackAssessment(
-        deterministic,
-        unlockedFacts,
-        messages || [],
-        finalRecommendation || ""
-      ),
+      assessment: fallback,
       modelUsed: "mock",
       source: "fallback",
       warning: "OPENAI_BASE_URL is not set; used deterministic fallback.",
@@ -218,8 +233,8 @@ export async function POST(req: Request) {
       candidatePrompt: scenario.candidatePrompt,
       idealRecommendation: scenario.idealRecommendation,
     },
-    transcript: messages || [],
-    finalRecommendation: finalRecommendation || "",
+    transcript: safeMessages,
+    finalRecommendation: safeFinalRecommendation,
     deterministicScore: {
       percent: deterministic.percent,
       label: deterministic.label,
@@ -258,7 +273,7 @@ export async function POST(req: Request) {
     const parsed = JSON.parse(extractJson(raw)) as Partial<ValidatorAssessment>;
     const report: ValidatorReport = {
       deterministic,
-      assessment: normalizeAssessment(parsed),
+      assessment: normalizeAssessment(parsed, deterministic, fallback),
       modelUsed: model,
       source: "model",
       rawModelOutput: raw,
@@ -269,12 +284,7 @@ export async function POST(req: Request) {
     const message = error instanceof Error ? error.message : "Unknown error";
     const report: ValidatorReport = {
       deterministic,
-      assessment: fallbackAssessment(
-        deterministic,
-        unlockedFacts,
-        messages || [],
-        finalRecommendation || ""
-      ),
+      assessment: fallback,
       modelUsed: "mock",
       source: "fallback",
       warning: `Validator model failed; used fallback. ${message}`,

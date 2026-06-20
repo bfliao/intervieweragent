@@ -84,16 +84,21 @@ export interface Message {
   content: string;
 }
 
+export type EvaluationLabel =
+  | "Strong ambiguity reducer"
+  | "Developing ambiguity reducer"
+  | "Weak ambiguity reducer";
+
 export interface EvaluationReport {
   percent: number;
-  label: string;
+  label: EvaluationLabel;
   unlockedWeight: number;
   totalWeight: number;
   missedFacts: HiddenFact[];
 }
 
 export interface ValidatorAssessment {
-  label: string;
+  label: EvaluationLabel;
   summary: string;
   signalBreakdown?: {
     questionQuality: SignalDimension;

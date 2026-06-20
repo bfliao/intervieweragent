@@ -500,7 +500,7 @@ function buildLocalConnectionLeakReport(
     "rollback",
     "stabilize",
   ]);
-  const localLabel =
+  const localSignalLabel =
     deterministic.percent >= 75 && identifiedLeak && mitigatedIncident
       ? "Strong incident debugger"
       : deterministic.percent >= 45 || identifiedLeak
@@ -508,18 +508,15 @@ function buildLocalConnectionLeakReport(
         : "Needs stronger resource-lifecycle reasoning";
 
   return {
-    deterministic: {
-      ...deterministic,
-      label: localLabel,
-    },
+    deterministic,
     assessment: {
-      label: localLabel,
+      label: deterministic.label,
       summary:
         deterministic.percent >= 75
-          ? "The candidate connected the production symptoms to a resource-lifecycle failure and had enough context to choose a grounded next step."
+          ? `${localSignalLabel}: the candidate connected the production symptoms to a resource-lifecycle failure and had enough context to choose a grounded next step.`
           : deterministic.percent >= 45
-            ? "The candidate found part of the connection-leak story, but the report should still check whether they separated mitigation, fix, and prevention."
-            : "The candidate did not uncover enough of the connection lifecycle to confidently explain the incident or choose the right immediate action.",
+            ? `${localSignalLabel}: the candidate found part of the connection-leak story, but the report should still check whether they separated mitigation, fix, and prevention.`
+            : `${localSignalLabel}: the candidate did not uncover enough of the connection lifecycle to confidently explain the incident or choose the right immediate action.`,
       signalBreakdown: {
         questionQuality: {
           label: askedLifecycle ? "Connection-lifecycle focused" : "Too broad",

@@ -12,6 +12,7 @@ You are given:
 
 Rules:
 - Do not change the deterministic score.
+- The top-level `label` must copy `deterministicScore.label` exactly.
 - Do not invent hidden facts.
 - Judge the process, not just whether the next step sounds polished.
 - A generic good answer should not receive strong praise if the candidate did not earn the relevant context.
@@ -27,7 +28,7 @@ Rules:
 Return valid JSON only with this exact shape:
 
 {
-  "label": "Strong ambiguity reducer | Developing ambiguity reducer | Weak ambiguity reducer",
+  "label": "copy deterministicScore.label exactly",
   "summary": "1-2 sentence hiring-style assessment.",
   "signalBreakdown": {
     "questionQuality": {
