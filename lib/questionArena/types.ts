@@ -70,3 +70,22 @@ export interface EvaluationReport {
   totalWeight: number;
   missedFacts: HiddenFact[];
 }
+
+export interface ValidatorAssessment {
+  label: string;
+  summary: string;
+  strengths: string[];
+  concerns: string[];
+  evidence: string[];
+  finalRecommendationAssessment: string;
+  nextInterviewFocus: string[];
+}
+
+export interface ValidatorReport {
+  deterministic: EvaluationReport;
+  assessment: ValidatorAssessment;
+  modelUsed: string;
+  source: "model" | "fallback";
+  warning?: string;
+  rawModelOutput?: string;
+}

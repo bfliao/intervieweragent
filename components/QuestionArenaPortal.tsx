@@ -4,18 +4,18 @@ import { useMemo, useState } from "react";
 import {
   gatekeepQuestion,
   generateManagerAnswer,
-  scoreInformationGain,
 } from "@/lib/questionArena/answerer";
 import type {
-  EvaluationReport,
   GatekeeperDecision,
   Message,
   ScenarioConfig,
+  ValidatorReport,
 } from "@/lib/questionArena/types";
 
 interface QuestionArenaPortalProps {
   scenarios: ScenarioConfig[];
   defaultAnswerPrompt: string;
+  defaultEvaluatorPrompt: string;
 }
 
 function formatJson(value: unknown) {
@@ -33,10 +33,12 @@ function parseScenario(value: string): ScenarioConfig {
 export default function QuestionArenaPortal({
   scenarios,
   defaultAnswerPrompt,
+  defaultEvaluatorPrompt,
 }: QuestionArenaPortalProps) {
   const [templateId, setTemplateId] = useState(scenarios[0]?.id ?? "");
   const [scenarioText, setScenarioText] = useState(formatJson(scenarios[0]));
   const [answerPrompt, setAnswerPrompt] = useState(defaultAnswerPrompt);
+  const [evaluatorPrompt, setEvaluatorPrompt] = useState(defaultEvaluatorPrompt);
   const [scenario, setScenario] = useState<ScenarioConfig>(scenarios[0]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [question, setQuestion] = useState("");
@@ -46,9 +48,13 @@ export default function QuestionArenaPortal({
     null
   );
   const [status, setStatus] = useState("Ready.");
-  const [report, setReport] = useState<EvaluationReport | null>(null);
+  const [report, setReport] = useState<ValidatorReport | null>(null);
   const [answerMode, setAnswerMode] = useState<"model" | "mock">("model");
   const [loadingAnswer, setLoadingAnswer] = useState(false);
+  const [loadingEvaluation, setLoadingEvaluation] = useState(false);
+  const [modelStatus, setModelStatus] = useState(
+    "Model endpoint not tested in UI."
+  );
 
   const questionsLeft = Math.max(scenario.maxQuestions - messages.length / 2, 0);
   const unlockedFacts = useMemo(
@@ -115,6 +121,7 @@ export default function QuestionArenaPortal({
           decision: GatekeeperDecision;
           answer: string;
           modelUsed?: string;
+          source?: string;
           warning?: string;
         };
         decision = data.decision;
@@ -122,7 +129,7 @@ export default function QuestionArenaPortal({
         setStatus(
           data.warning
             ? data.warning
-            : `Answered with ${data.modelUsed || "model endpoint"}.`
+            : `Answered with ${data.modelUsed || "model endpoint"} (${data.source || "model"}).`
         );
       } else {
         decision = gatekeepQuestion(text, scenario, unlockedFactIds);
@@ -150,14 +157,73 @@ export default function QuestionArenaPortal({
     }
   }
 
-  function generateReport() {
-    setReport(scoreInformationGain(scenario, unlockedFactIds));
+  async function generateReport() {
+    setLoadingEvaluation(true);
+    try {
+      const res = await fetch("/api/question-arena/evaluate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scenario,
+          messages,
+          unlockedFactIds,
+          finalRecommendation,
+          evaluatorPrompt,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = (await res.json()) as ValidatorReport;
+      setReport(data);
+      setStatus(
+        data.warning
+          ? data.warning
+          : `Validator report generated with ${data.modelUsed} (${data.source}).`
+      );
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : "Validator report failed."
+      );
+    } finally {
+      setLoadingEvaluation(false);
+    }
+  }
+
+  async function testModelEndpoint() {
+    setModelStatus("Testing model endpoint...");
+    try {
+      const res = await fetch("/api/question-arena/model-status", {
+        cache: "no-store",
+      });
+      const data = (await res.json()) as {
+        ok: boolean;
+        configuredModel?: string;
+        modelIds?: string[];
+        configuredModelAvailable?: boolean;
+        error?: string;
+      };
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "Model endpoint check failed.");
+      }
+      const availableText = data.configuredModelAvailable
+        ? "available"
+        : "not listed";
+      setModelStatus(
+        `Connected: ${data.configuredModel} (${availableText}). Models: ${
+          data.modelIds?.join(", ") || "none"
+        }`
+      );
+    } catch (error) {
+      setModelStatus(
+        error instanceof Error ? `Not connected: ${error.message}` : "Not connected."
+      );
+    }
   }
 
   function exportRun() {
     const payload = {
       scenarioId: scenario.id,
       answerPrompt,
+      evaluatorPrompt,
       unlockedFactIds,
       messages,
       finalRecommendation,
@@ -220,6 +286,16 @@ export default function QuestionArenaPortal({
         </label>
 
         <label className="mb-4 block text-sm font-semibold text-slate-300">
+          Validator Prompt
+          <textarea
+            value={evaluatorPrompt}
+            onChange={(event) => setEvaluatorPrompt(event.target.value)}
+            className="mt-2 h-48 w-full resize-y rounded-md border border-slate-700 bg-background p-3 text-sm leading-relaxed outline-none focus:border-emerald-300"
+            spellCheck={false}
+          />
+        </label>
+
+        <label className="mb-4 block text-sm font-semibold text-slate-300">
           Answer Backend
           <select
             value={answerMode}
@@ -231,6 +307,16 @@ export default function QuestionArenaPortal({
             <option value="model">Model endpoint</option>
             <option value="mock">Deterministic mock</option>
           </select>
+          <button
+            type="button"
+            onClick={testModelEndpoint}
+            className="mt-2 w-full rounded-md bg-slate-800 px-3 py-2 text-sm font-semibold"
+          >
+            Test Model Connection
+          </button>
+          <span className="mt-2 block rounded-md border border-slate-800 bg-background px-3 py-2 text-xs text-slate-400">
+            {modelStatus}
+          </span>
         </label>
 
         <div className="grid grid-cols-3 gap-2">
@@ -348,9 +434,10 @@ export default function QuestionArenaPortal({
           />
           <button
             onClick={generateReport}
+            disabled={loadingEvaluation}
             className="mt-2 w-full rounded-md bg-emerald-300 px-4 py-2 text-sm font-bold text-slate-950"
           >
-            Generate Report
+            {loadingEvaluation ? "Generating..." : "Generate Report"}
           </button>
         </div>
 
@@ -360,26 +447,76 @@ export default function QuestionArenaPortal({
               Evaluation Report
             </h3>
             <div className="mb-3 inline-flex rounded-full bg-emerald-300 px-3 py-1 text-sm font-black text-slate-950">
-              {report.percent}% · {report.label}
+              {report.deterministic.percent}% · {report.assessment.label}
             </div>
             <p className="mb-3 text-sm text-slate-300">
               Primary metric: weighted information gain. Unlocked{" "}
               {unlockedFacts.length}/{scenario.hiddenFacts.length} hidden facts.
             </p>
+            <p className="mb-3 rounded-md border border-slate-800 bg-background p-3 text-sm leading-relaxed text-slate-200">
+              {report.assessment.summary}
+            </p>
+            <div className="mb-4 grid gap-3 md:grid-cols-2">
+              <div>
+                <h4 className="mb-1 text-xs font-black uppercase tracking-wide text-slate-500">
+                  Strengths
+                </h4>
+                <ul className="space-y-1 text-sm text-slate-300">
+                  {report.assessment.strengths.map((item, index) => (
+                    <li key={`strength-${index}`}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <h4 className="mb-1 text-xs font-black uppercase tracking-wide text-slate-500">
+                  Concerns
+                </h4>
+                <ul className="space-y-1 text-sm text-slate-300">
+                  {report.assessment.concerns.map((item, index) => (
+                    <li key={`concern-${index}`}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            <h4 className="mb-1 text-xs font-black uppercase tracking-wide text-slate-500">
+              Evidence
+            </h4>
+            <ul className="mb-4 space-y-1 text-sm text-slate-300">
+              {report.assessment.evidence.map((item, index) => (
+                <li key={`evidence-${index}`}>{item}</li>
+              ))}
+            </ul>
+            <h4 className="mb-1 text-xs font-black uppercase tracking-wide text-slate-500">
+              Final Recommendation
+            </h4>
+            <p className="mb-4 text-sm leading-relaxed text-slate-300">
+              {report.assessment.finalRecommendationAssessment}
+            </p>
             <h4 className="mb-1 text-xs font-black uppercase tracking-wide text-slate-500">
               Missed Context
             </h4>
             <ul className="space-y-1 text-sm text-slate-300">
-              {report.missedFacts.length === 0 ? (
+              {report.deterministic.missedFacts.length === 0 ? (
                 <li>None.</li>
               ) : (
-                report.missedFacts.map((fact) => (
+                report.deterministic.missedFacts.map((fact) => (
                   <li key={fact.id}>
                     <strong>{fact.title}:</strong> {fact.whyItMatters}
                   </li>
                 ))
               )}
             </ul>
+            <h4 className="mb-1 mt-4 text-xs font-black uppercase tracking-wide text-slate-500">
+              Next Interview Focus
+            </h4>
+            <ul className="space-y-1 text-sm text-slate-300">
+              {report.assessment.nextInterviewFocus.map((item, index) => (
+                <li key={`next-${index}`}>{item}</li>
+              ))}
+            </ul>
+            <p className="mt-4 text-xs text-slate-500">
+              Validator source: {report.modelUsed} ({report.source})
+            </p>
           </div>
         )}
       </section>

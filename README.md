@@ -55,6 +55,7 @@ data/
 prompts/
   interview-answerer.md            # Manager/persona response prompt
   gatekeeper.md                    # Hidden-fact unlock prompt draft
+  evaluator.md                     # Final validator/report prompt
 lib/
   questionArena/
     answerer.ts                    # Deterministic mock gatekeeper/persona
@@ -76,6 +77,8 @@ The current app uses a deterministic mock answerer:
 4. The report computes weighted information gain from unlocked hidden facts.
 
 When `Model endpoint` is selected, the same deterministic gatekeeper still decides what facts were earned. The model only writes the manager response using approved facts, so scoring stays stable while the answer sounds more natural.
+
+The final report uses `/api/question-arena/evaluate`. It keeps weighted information gain deterministic, then asks the model-backed validator to explain the candidate signal with strengths, concerns, evidence, and next interview focus.
 
 ## Team Workflow
 

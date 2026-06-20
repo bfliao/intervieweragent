@@ -72,6 +72,19 @@ export async function POST(req: Request) {
     decision.unlockedFactIds,
     decision.ambientFactIds
   );
+  const hasApprovedContext =
+    context.hiddenFacts.length > 0 || context.ambientFacts.length > 0;
+
+  if (!hasApprovedContext) {
+    return NextResponse.json({
+      decision,
+      answer: fallbackAnswer,
+      modelUsed: model,
+      source: "guardrail",
+      warning:
+        "No approved context was unlocked; skipped model generation to avoid invented details.",
+    });
+  }
 
   try {
     const completion = await client.chat.completions.create({
@@ -109,6 +122,7 @@ export async function POST(req: Request) {
       decision,
       answer,
       modelUsed: model,
+      source: "model",
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
@@ -116,6 +130,7 @@ export async function POST(req: Request) {
       decision,
       answer: fallbackAnswer,
       modelUsed: "mock",
+      source: "fallback",
       warning: `Model call failed; used deterministic fallback. ${message}`,
     });
   }

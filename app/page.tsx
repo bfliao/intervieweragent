@@ -8,12 +8,17 @@ export default function Home() {
     path.join(process.cwd(), "prompts", "interview-answerer.md"),
     "utf8"
   );
+  const defaultEvaluatorPrompt = readFileSync(
+    path.join(process.cwd(), "prompts", "evaluator.md"),
+    "utf8"
+  );
 
   return (
     <main>
       <QuestionArenaPortal
         scenarios={scenarioTemplates}
         defaultAnswerPrompt={defaultAnswerPrompt}
+        defaultEvaluatorPrompt={defaultEvaluatorPrompt}
       />
     </main>
   );
