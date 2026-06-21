@@ -1,7 +1,5 @@
 # Question Arena Demo Pipeline
 
-**Qssessment: assessment by questions, not just answers.**
-
 This branch combines the scenario-generation dashboard with the TeamB Question Arena candidate flow.
 
 The demo path is:
@@ -16,28 +14,6 @@ The demo path is:
 This is intentionally backed by an in-memory server store plus localStorage for the hackathon demo. In production, the UUID would resolve from a database.
 
 Question Arena is an internal testing portal for building ambiguity-based candidate assessments. The current MVP lets the team process a raw teammate storyline into a structured scenario config, edit the interview answer prompt, run a 5-question Q&A with a simulated HR/team/manager source, ask the candidate for a next immediate step, and inspect what hidden context the candidate earned.
-
-## Screenshots
-
-Hiring managers can generate scenarios and candidate assessment links from the dashboard.
-
-![Scenario builder dashboard](docs/images/dashboard.png)
-
-![Generated assessment link](docs/images/assessment-link.png)
-
-Candidates receive an ambiguous manager request, inspect the starting evidence, ask clarifying questions, and earn hidden context through the Question Arena.
-
-![Candidate intro](docs/images/candidate-start.png)
-
-![Starting evidence](docs/images/evidence.png)
-
-![Question Arena chat](docs/images/question-arena.png)
-
-The manager report shows what context the candidate uncovered and how their question path maps to the assessment.
-
-![Manager report graph](docs/images/report-graph.png)
-
-![Manager report detail](docs/images/report-detail.png)
 
 ## Tech Stack
 
